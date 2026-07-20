@@ -16,13 +16,27 @@ export class PokeOntology {
     
     // Fetch basic pokemon info
     const query = typeof idOrName === 'number' || !isNaN(Number(idOrName))
-      ? db.prepare(`SELECT * FROM pokemon WHERE id = ?`).get(idOrName)
-      : db.prepare(`SELECT * FROM pokemon WHERE identifier = ? OR name = ?`).get(idOrName, idOrName);
+      ? db.prepare(`SELECT * FROM pokemon WHERE id = ?`).get(String(idOrName))
+      : db.prepare(`SELECT * FROM pokemon WHERE identifier = ?`).get(String(idOrName));
 
     if (!query) {
       throw new Error(`Pokemon not found: ${idOrName}`);
     }
     const data = query as any;
+    const pkmnId = data.id;
+    const speciesId = data.species_id;
+
+    // Fetch species name (Korean)
+    const speciesNameQuery = db.prepare(`SELECT name FROM pokemon_species_names WHERE pokemon_species_id = ? AND local_language_id = 3`).get(speciesId) as any;
+    const koName = speciesNameQuery ? speciesNameQuery.name : data.identifier;
+
+    // Fetch stats
+    const statsQuery = db.prepare(`SELECT stat_id, base_stat FROM pokemon_stats WHERE pokemon_id = ?`).all(pkmnId) as any[];
+    const stats: Record<string, string> = {};
+    for (const st of statsQuery) {
+      stats[st.stat_id] = st.base_stat;
+    }
+    // 1:hp, 2:atk, 3:def, 4:spatk, 5:spdef, 6:speed
 
     const pkmnUri = `${POKE_PREFIX}${role}_pokemon`;
 
@@ -33,40 +47,62 @@ export class PokeOntology {
     this.store.add(pkmnUri, `${POKE_PREFIX}species`, `${POKE_PREFIX}species_${data.identifier}`);
     this.store.add(pkmnUri, `${POKE_PREFIX}level`, role === 'player' ? "5" : "5");
     this.store.add(pkmnUri, `${POKE_PREFIX}experience`, "0");
-    this.store.add(pkmnUri, `${POKE_PREFIX}name`, data.name || data.identifier);
+    this.store.add(pkmnUri, `${POKE_PREFIX}name`, koName);
     
-    this.store.add(pkmnUri, `${POKE_PREFIX}maxHP`, data.hp.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}currentHP`, data.hp.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}speed`, data.speed.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}attack`, data.attack.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}weight`, data.weight.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}height`, data.height.toString());
-    this.store.add(pkmnUri, `${POKE_PREFIX}baseExperience`, data.base_experience.toString());
+    this.store.add(pkmnUri, `${POKE_PREFIX}maxHP`, stats['1'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}currentHP`, stats['1'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}speed`, stats['6'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}attack`, stats['2'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}weight`, data.weight?.toString() || "0");
+    this.store.add(pkmnUri, `${POKE_PREFIX}height`, data.height?.toString() || "0");
+    this.store.add(pkmnUri, `${POKE_PREFIX}baseExperience`, data.base_experience?.toString() || "0");
     
     // Sprites
     this.store.add(pkmnUri, `${POKE_PREFIX}spriteFront`, `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${data.id}.png`);
     this.store.add(pkmnUri, `${POKE_PREFIX}spriteBack`, `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/${data.id}.png`);
 
     // Types
-    if (data.type1) {
-      const typeUri = `${POKE_PREFIX}type_${data.type1}`;
+    const typesQuery = db.prepare(`
+      SELECT pt.type_id, tn.name 
+      FROM pokemon_types pt 
+      LEFT JOIN type_names tn ON pt.type_id = tn.type_id AND tn.local_language_id = 3
+      WHERE pt.pokemon_id = ?
+    `).all(pkmnId) as any[];
+
+    for (const t of typesQuery) {
+      const typeStr = t.name || t.type_id;
+      const typeUri = `${POKE_PREFIX}type_${typeStr}`;
       this.store.add(pkmnUri, `${POKE_PREFIX}hasType`, typeUri);
-      await this.loadTypeRelations(data.type1);
+      await this.loadTypeRelations(typeStr, t.type_id);
     }
-    if (data.type2) {
-      const typeUri = `${POKE_PREFIX}type_${data.type2}`;
-      this.store.add(pkmnUri, `${POKE_PREFIX}hasType`, typeUri);
-      await this.loadTypeRelations(data.type2);
+
+
+    // Abilities
+    const abilitiesQuery = db.prepare(`
+      SELECT a.identifier, an.name 
+      FROM pokemon_abilities pa 
+      JOIN abilities a ON pa.ability_id = a.id 
+      LEFT JOIN ability_names an ON a.id = an.ability_id AND an.local_language_id = 3
+      WHERE pa.pokemon_id = ?
+    `).all(pkmnId) as any[];
+    
+    for (const ab of abilitiesQuery) {
+      const abUri = `${POKE_PREFIX}ability_${ab.identifier}`;
+      this.store.add(abUri, "rdf:type", `${POKE_PREFIX}Ability`);
+      this.store.add(abUri, `${POKE_PREFIX}name`, ab.name || ab.identifier);
+      this.store.add(pkmnUri, `${POKE_PREFIX}hasAbility`, abUri);
     }
 
     // Evolution
     if (role === 'player') {
       const evos = db.prepare(`
-        SELECT p.identifier, p.name, e.minimum_level
-        FROM evolutions e
-        JOIN pokemon p ON e.evolved_species_id = p.species_id
-        WHERE e.evolves_from_species_id = ?
-      `).all(data.species_id) as any[];
+        SELECT p.identifier, psn.name, pe.minimum_level
+        FROM pokemon_evolution pe
+        JOIN pokemon p ON pe.evolved_species_id = p.species_id
+        LEFT JOIN pokemon_species_names psn ON psn.pokemon_species_id = p.species_id AND psn.local_language_id = 3
+        WHERE pe.evolved_species_id IN (SELECT id FROM pokemon_species WHERE evolves_from_species_id = ?)
+        AND p.is_default = '1'
+      `).all(speciesId) as any[];
 
       const speciesUri = `${POKE_PREFIX}species_${data.identifier}`;
       this.store.add(speciesUri, "rdf:type", `${POKE_PREFIX}Species`);
@@ -79,24 +115,29 @@ export class PokeOntology {
     }
 
     // Moves (Fetch up to 4 random or initial moves for this pokemon from pokemon_moves)
-    // Here we'll get 4 level-up moves for simplicity
     const moves = db.prepare(`
-      SELECT m.*
+      SELECT m.id, m.identifier, mn.name, m.type_id, m.power
       FROM pokemon_moves pm
       JOIN moves m ON pm.move_id = m.id
-      WHERE pm.pokemon_id = ? AND pm.level <= 15 AND m.power > 0
-      ORDER BY pm.level DESC
+      LEFT JOIN move_names mn ON m.id = mn.move_id AND mn.local_language_id = 3
+      WHERE pm.pokemon_id = ? AND pm.level <= 15 AND m.power > 0 AND pm.pokemon_move_method_id = 1
+      GROUP BY m.id
+      ORDER BY MAX(pm.level) DESC
       LIMIT 4
-    `).all(data.id) as any[];
+    `).all(pkmnId) as any[];
 
     for (const move of moves) {
       const moveUri = `${POKE_PREFIX}move_${move.identifier.replace(/-/g, '_')}`;
       this.store.add(moveUri, "rdf:type", `${POKE_PREFIX}Move`);
       this.store.add(moveUri, `${POKE_PREFIX}name`, move.name || move.identifier);
       this.store.add(moveUri, `${POKE_PREFIX}power`, (move.power || 40).toString());
-      this.store.add(moveUri, `${POKE_PREFIX}hasType`, `${POKE_PREFIX}type_${move.type}`);
       
-      await this.loadTypeRelations(move.type);
+      const moveTypeQuery = db.prepare(`SELECT name FROM type_names WHERE type_id = ? AND local_language_id = 3`).get(move.type_id) as any;
+      const moveTypeStr = moveTypeQuery ? moveTypeQuery.name : move.type_id;
+      
+      this.store.add(moveUri, `${POKE_PREFIX}hasType`, `${POKE_PREFIX}type_${moveTypeStr}`);
+      
+      await this.loadTypeRelations(moveTypeStr, move.type_id);
       this.store.add(pkmnUri, `${POKE_PREFIX}knowsMove`, moveUri);
     }
 
@@ -107,14 +148,14 @@ export class PokeOntology {
       this.store.add(moveUri, `${POKE_PREFIX}name`, "몸통박치기");
       this.store.add(moveUri, `${POKE_PREFIX}power`, "40");
       this.store.add(moveUri, `${POKE_PREFIX}hasType`, `${POKE_PREFIX}type_노말`);
-      await this.loadTypeRelations('노말');
+      await this.loadTypeRelations('노말', '1'); // 1 is normal
       this.store.add(pkmnUri, `${POKE_PREFIX}knowsMove`, moveUri);
     }
     
     return pkmnUri;
   }
 
-  async loadTypeRelations(typeName: string) {
+  async loadTypeRelations(typeName: string, typeId: string) {
     if (this.fetchedTypes.has(typeName)) return;
     this.fetchedTypes.add(typeName);
     
@@ -124,15 +165,21 @@ export class PokeOntology {
     this.store.add(typeUri, "rdf:type", `${POKE_PREFIX}Type`);
     this.store.add(typeUri, `${POKE_PREFIX}name`, typeName);
     
-    const relations = db.prepare(`SELECT target_type, damage_factor FROM type_efficacy WHERE damage_type = ?`).all(typeName) as any[];
+    const relations = db.prepare(`
+      SELECT te.target_type_id, tn.name, te.damage_factor 
+      FROM type_efficacy te
+      LEFT JOIN type_names tn ON tn.type_id = te.target_type_id AND tn.local_language_id = 3
+      WHERE te.damage_type_id = ?
+    `).all(typeId) as any[];
     
     for (const rel of relations) {
-      if (rel.damage_factor === 200) {
-        this.store.add(typeUri, `${POKE_PREFIX}doubleDamageTo`, `${POKE_PREFIX}type_${rel.target_type}`);
-      } else if (rel.damage_factor === 50) {
-        this.store.add(typeUri, `${POKE_PREFIX}halfDamageTo`, `${POKE_PREFIX}type_${rel.target_type}`);
-      } else if (rel.damage_factor === 0) {
-        this.store.add(typeUri, `${POKE_PREFIX}noDamageTo`, `${POKE_PREFIX}type_${rel.target_type}`);
+      const targetTypeStr = rel.name || rel.target_type_id;
+      if (rel.damage_factor === '200') {
+        this.store.add(typeUri, `${POKE_PREFIX}doubleDamageTo`, `${POKE_PREFIX}type_${targetTypeStr}`);
+      } else if (rel.damage_factor === '50') {
+        this.store.add(typeUri, `${POKE_PREFIX}halfDamageTo`, `${POKE_PREFIX}type_${targetTypeStr}`);
+      } else if (rel.damage_factor === '0') {
+        this.store.add(typeUri, `${POKE_PREFIX}noDamageTo`, `${POKE_PREFIX}type_${targetTypeStr}`);
       }
     }
   }

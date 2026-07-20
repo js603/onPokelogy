@@ -1,16 +1,21 @@
 import { TripleStore } from './TripleStore';
+import { DataLayer } from './DataLayer';
 import { PokeOntology } from './PokeOntology';
 
 export class GameEngine {
   public store: TripleStore;
   public ontology: PokeOntology;
+  public dataLayer: DataLayer;
   public tickCount: number = 0;
   public logs: string[] = [];
   public evolutionEvent: any = null;
   
+  public currentLocationAreaId: number = 393; // Default: hoenn-route-101
+
   constructor() {
     this.store = new TripleStore();
     this.ontology = new PokeOntology(this.store);
+    this.dataLayer = new DataLayer();
   }
   
   log(msg: string) {
@@ -55,7 +60,21 @@ export class GameEngine {
     // 인간 스프라이트
     this.store.add(playerUri, "poke:spriteBack", "https://play.pokemonshowdown.com/sprites/trainers/oak.png"); 
 
+    // 지역 이름 조회
+    const { getDb } = await import('../db/index');
+    const db = getDb();
+    const loc = db.prepare(`
+      SELECT ln.name, l.identifier 
+      FROM location_areas a 
+      JOIN locations l ON a.location_id = l.id 
+      LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+      WHERE a.id = ?
+    `).get(String(this.currentLocationAreaId)) as any;
+    
+    const locName = loc ? (loc.name || loc.identifier) : '알 수 없는 장소';
+
     this.log(`인간형 주인공이 생성되었습니다. (온톨로지 타입: 인간)`);
+    this.log(`현재 위치: ${locName}`);
     this.log(`전투를 통해 야생의 첫 포켓몬을 포획하세요!`);
     
     await this.spawnWildPokemon();
@@ -66,12 +85,39 @@ export class GameEngine {
   }
   
   async spawnWildPokemon() {
-    const randomId = Math.floor(Math.random() * 151) + 1;
+    const { getDb } = await import('../db/index');
+    const db = getDb();
     
-    const enemyUri = await this.ontology.loadPokemon(randomId, 'enemy');
+    // 현재 지역의 출현 포켓몬 조회
+    const encounters = db.prepare(`
+      SELECT e.pokemon_id, e.min_level, e.max_level
+      FROM encounters e
+      WHERE e.location_area_id = ?
+    `).all(String(this.currentLocationAreaId)) as any[];
+
+    let targetId = Math.floor(Math.random() * 151) + 1; // Default
+    let targetLevel = 5;
+
+    if (encounters && encounters.length > 0) {
+      const randomEncounter = encounters[Math.floor(Math.random() * encounters.length)];
+      targetId = parseInt(randomEncounter.pokemon_id, 10);
+      const minLvl = parseInt(randomEncounter.min_level, 10);
+      const maxLvl = parseInt(randomEncounter.max_level, 10);
+      targetLevel = Math.floor(Math.random() * (maxLvl - minLvl + 1)) + minLvl;
+    }
+
+    const enemyUri = await this.ontology.loadPokemon(targetId, 'enemy');
+    
+    // 레벨 적용
+    this.store.update(enemyUri, "poke:level", targetLevel.toString());
+    const baseHp = parseInt(this.store.getValue(enemyUri, "poke:maxHP") || "10", 10);
+    const scaledHp = baseHp + (targetLevel - 5) * 5;
+    this.store.update(enemyUri, "poke:maxHP", scaledHp.toString());
+    this.store.update(enemyUri, "poke:currentHP", scaledHp.toString());
+
     const enemyName = this.store.getValue(enemyUri, "poke:name");
     
-    this.log(`앗! 야생의 ${enemyName}이(가) 나타났다!`);
+    this.log(`앗! 야생의 ${enemyName} (Lv.${targetLevel})이(가) 나타났다!`);
   }
 
   async evolvePokemon(playerUri: string, nextSpeciesName: string) {
@@ -106,49 +152,58 @@ export class GameEngine {
     this.evolutionEvent = { oldName, newName, oldSprite, newSprite };
   }
 
-  calculateDamage(attackerUri: string, defenderUri: string, moveUri: string): { damage: number, effectiveness: string } {
-    const movePower = parseInt(this.store.getValue(moveUri, "poke:power") || "0", 10);
+calculateDamage(attackerUri: string, defenderUri: string, moveUri: string): { damage: number, effectiveness: string } {
+    let movePower = parseInt(this.store.getValue(moveUri, "poke:power") || "0", 10);
     const attackerAtk = parseInt(this.store.getValue(attackerUri, "poke:attack") || "10", 10);
     
-    let multiplier = 1;
-    let effectText = "";
+    // Semantic queries replaced by DataLayer SQL queries
+    const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
+    const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
     
-    // Semantic queries for effectiveness
-    // Is move super effective against defender? 
-    // We already inferred this in TripleStore.infer()!
-    if (this.store.query(moveUri, "poke:isSuperEffectiveAgainst", defenderUri).length > 0) {
-      multiplier *= 2;
-      const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
-      const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
-      const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
-      let weakTypeNames = [];
-      for (const t of defenderTypes) {
-         if (this.store.query(moveTypeUri, "poke:doubleDamageTo", t).length > 0) {
-            weakTypeNames.push(this.store.getValue(t, "poke:name") || t.replace("poke:type_", ""));
-         }
+    const { multiplier, weakTypeNames, resistTypeNames, immuneTypeNames } = this.dataLayer.getTypeMatchupMultiplier(moveTypeUri, defenderTypes);
+    
+    let effectText = "";
+    let abilityEffectText = "";
+    
+    const attackerAbilities = this.store.query(attackerUri, "poke:hasAbility", null).map(t => t[2]);
+    for (const abUri of attackerAbilities) {
+      const abName = this.store.getValue(abUri, "poke:name");
+      if (abName === "맹화" || abName === "심록" || abName === "급류") {
+         movePower = Math.floor(movePower * 1.5);
+         abilityEffectText = `[SQL 연동] ${abName} 특성으로 인해 기술의 위력이 상승했다! `;
+      } else if (abName === "적응력") {
+         movePower = Math.floor(movePower * 1.5);
+         abilityEffectText = `[SQL 연동] ${abName} 특성으로 자속 보정이 강화되었다! `;
       }
-      effectText = `[시맨틱 추론] ${moveTypeName} 기술은 ${weakTypeNames.join(', ')} 타입에게 효과가 굉장했다!`;
-    } else if (this.store.query(moveUri, "poke:isNotVeryEffectiveAgainst", defenderUri).length > 0) {
-      multiplier *= 0.5;
-      const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
-      const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
-      const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
-      let resistTypeNames = [];
-      for (const t of defenderTypes) {
-         if (this.store.query(moveTypeUri, "poke:halfDamageTo", t).length > 0) {
-            resistTypeNames.push(this.store.getValue(t, "poke:name") || t.replace("poke:type_", ""));
-         }
-      }
-      effectText = `[시맨틱 추론] ${moveTypeName} 기술은 ${resistTypeNames.join(', ')} 타입에게 효과가 별로인 것 같다...`;
-    } else if (this.store.query(moveUri, "poke:hasNoEffectOn", defenderUri).length > 0) {
-      multiplier *= 0;
-      effectText = `[시맨틱 추론] 상대의 타입에 의해 기술의 효과가 완벽히 상쇄되었다.`;
+    }
+    
+    const defenderAbilities = this.store.query(defenderUri, "poke:hasAbility", null).map(t => t[2]);
+    let defMultiplier = 1;
+    for (const abUri of defenderAbilities) {
+       const abName = this.store.getValue(abUri, "poke:name");
+       if (abName === "부유" && moveTypeUri.includes("땅")) {
+         defMultiplier = 0;
+         abilityEffectText = `[SQL 연동] ${abName} 특성으로 인해 땅 타입 공격이 통하지 않는다! `;
+       } else if (abName === "두꺼운지방" && (moveTypeUri.includes("불꽃") || moveTypeUri.includes("얼음"))) {
+         defMultiplier = 0.5;
+         abilityEffectText = `[SQL 연동] ${abName} 특성으로 인해 불꽃/얼음 타입 데미지가 반감되었다! `;
+       }
     }
 
-    // Simplified damage formula
-    const damage = Math.floor(((2 * 5 / 5 + 2) * movePower * (attackerAtk / 50) / 50 + 2) * multiplier);
+    const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
     
-    return { damage: Math.max(1, damage), effectiveness: effectText };
+    if (multiplier > 1) {
+      effectText = `[SQL 연동] ${moveTypeName} 기술은 ${weakTypeNames.join(', ')} 타입에게 효과가 굉장했다!`;
+    } else if (multiplier < 1 && multiplier > 0) {
+      effectText = `[SQL 연동] ${moveTypeName} 기술은 ${resistTypeNames.join(', ')} 타입에게 효과가 별로인 듯하다...`;
+    } else if (multiplier === 0) {
+      effectText = `[SQL 연동] ${moveTypeName} 기술은 ${immuneTypeNames.join(', ')} 타입에게 효과가 없다...`;
+    }
+    
+    const finalMultiplier = multiplier * defMultiplier;
+    const damage = Math.floor(((2 * 5 / 5 + 2) * movePower * (attackerAtk / 50) / 50 + 2) * finalMultiplier);
+    
+    return { damage: Math.max(1, damage), effectiveness: abilityEffectText + effectText };
   }
 
   applyDamage(defenderUri: string, damage: number) {
@@ -315,13 +370,25 @@ export class GameEngine {
         this.store.remove(enemyUri, null, null); // Enemy defeated
         
         // Check Evolution
-        this.store.infer();
-        const readyToEvolve = this.store.getValue(playerUri, "poke:readyToEvolveTo");
-        if (readyToEvolve) {
-          const nextSpeciesName = readyToEvolve.replace("poke:species_", "");
+        // Check Evolution via SQL
+        currentLevel = parseInt(this.store.getValue(playerUri, "poke:level") || "0", 10);
+        const speciesUri = this.store.getValue(playerUri, "poke:species") || "";
+        
+        const evos = this.dataLayer.getEvolutionRequirements(speciesUri);
+        
+        let readyToEvolveTo = null;
+        for (const evo of evos) {
+           const minLevel = parseInt(evo.minimum_level, 10);
+           if (!isNaN(minLevel) && currentLevel >= minLevel) {
+               readyToEvolveTo = evo.evolved_identifier;
+               break;
+           }
+        }
+        
+        if (readyToEvolveTo) {
           this.log(`앗! ${playerName}의 상태가...!`);
           this.log(`${playerName}은(는) 진화하려고 한다!`);
-          await this.evolvePokemon(playerUri, nextSpeciesName);
+          await this.evolvePokemon(playerUri, readyToEvolveTo);
         }
         
         return;
@@ -330,9 +397,18 @@ export class GameEngine {
       // Enemy turn
       this.enemyTurn(enemyUri, playerUri);
     } else if (actionType === 'REST') {
-       const maxHp = this.store.getValue(playerUri, "poke:maxHP") || "100";
-       this.store.update(playerUri, "poke:currentHP", maxHp);
-       this.log(`${playerName}은(는) 휴식을 취해 체력을 모두 회복했다.`);
+       const backupTriples = this.store.query("poke:backup_pokemon", null, null);
+       if (backupTriples.length > 0) {
+           this.log(`오박사: 치료 기계로 포켓몬을 회복시켰다!`);
+           this.log(`다시 포켓몬으로 게임을 진행합니다.`);
+           this.restorePokemon("poke:backup_pokemon", playerUri);
+           const maxHp = this.store.getValue(playerUri, "poke:maxHP") || "100";
+           this.store.update(playerUri, "poke:currentHP", maxHp);
+       } else {
+           const maxHp = this.store.getValue(playerUri, "poke:maxHP") || "100";
+           this.store.update(playerUri, "poke:currentHP", maxHp);
+           this.log(`${playerName}은(는) 휴식을 취해 체력을 모두 회복했다.`);
+       }
        
        if (this.store.query(enemyUri, "rdf:type", null).length > 0) {
            this.enemyTurn(enemyUri, playerUri);
@@ -351,6 +427,27 @@ export class GameEngine {
          this.store.remove(enemyUri, null, null);
        } else {
          this.log(`도망칠 대상이 없다!`);
+       }
+    } else if (actionType === 'TRAVEL') {
+       if (this.store.query(enemyUri, "rdf:type", null).length > 0) {
+         this.log(`전투 중에는 이동할 수 없습니다!`);
+       } else {
+         const targetLocationAreaId = payload?.locationAreaId;
+         if (targetLocationAreaId) {
+             this.currentLocationAreaId = parseInt(targetLocationAreaId, 10);
+             const { getDb } = await import('../db/index');
+             const db = getDb();
+             const loc = db.prepare(`
+                SELECT ln.name, l.identifier 
+                FROM location_areas a 
+                JOIN locations l ON a.location_id = l.id 
+                LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+                WHERE a.id = ?
+              `).get(String(this.currentLocationAreaId)) as any;
+              
+             const locName = loc ? (loc.name || loc.identifier) : '알 수 없는 장소';
+             this.log(`${locName}(으)로 이동했습니다.`);
+         }
        }
     }
   }
@@ -385,9 +482,27 @@ export class GameEngine {
         this.store.update(playerUri, "poke:currentHP", maxHp);
       } else {
         this.log(`오박사: 이런, 포켓몬을 잃고 말았구나. 내가 직접 나서마!`);
+        this.backupPokemon(playerUri, "poke:backup_pokemon");
         this.respawnOak();
       }
     }
+  }
+
+  backupPokemon(fromUri: string, toUri: string) {
+    this.store.remove(toUri, null, null);
+    const triples = this.store.query(fromUri, null, null);
+    for (const t of triples) {
+      this.store.add(toUri, t[1], t[2]);
+    }
+  }
+
+  restorePokemon(fromUri: string, toUri: string) {
+    this.store.remove(toUri, null, null);
+    const triples = this.store.query(fromUri, null, null);
+    for (const t of triples) {
+      this.store.add(toUri, t[1], t[2]);
+    }
+    this.store.remove(fromUri, null, null);
   }
 
   respawnOak() {

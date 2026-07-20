@@ -43,6 +43,27 @@ app.get('/api/state', (req, res) => {
   res.json(game.getGameState());
 });
 
+// 4. Get locations
+app.get('/api/locations', async (req, res) => {
+  try {
+    const { getDb } = await import('./src/db/index.js');
+    const db = getDb();
+    
+    // Only return locations in Hoenn (region 3) that have encounters
+    const locations = db.prepare(`
+      SELECT a.id, a.identifier, l.identifier as loc, ln.name 
+      FROM location_areas a 
+      JOIN locations l ON a.location_id = l.id 
+      LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9 
+      WHERE a.id IN (SELECT DISTINCT location_area_id FROM encounters) AND l.region_id = 3
+    `).all();
+    
+    res.json(locations);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 4. View Knowledge Graph (JSON-LD)
 app.get('/api/graph', (req, res) => {
   res.json(game.store.toJSONLD());

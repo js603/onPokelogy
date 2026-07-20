@@ -91,7 +91,149 @@ const LogMessage = ({ log, gameState, isTyping, onTypingComplete }: { key?: any,
   );
 };
 
+
+
+const hoennCoords: Record<string, {x: number, y: number}> = {
+  "Littleroot Town": { x: 17, y: 49 },
+  "Route 101": { x: 18, y: 47 },
+  "Oldale Town": { x: 18, y: 44 },
+  "Route 102": { x: 15, y: 43 },
+  "Route 103": { x: 20, y: 40 },
+  "Petalburg City": { x: 11, y: 42 },
+  "Route 104": { x: 8, y: 38 },
+  "Route 105": { x: 8, y: 50 },
+  "Route 106": { x: 10, y: 59 },
+  "Route 110": { x: 26, y: 37 },
+  "Dewford Town": { x: 13, y: 63 },
+  "Route 109": { x: 26, y: 59 },
+  "Route 108": { x: 23, y: 68 },
+  "Route 107": { x: 16, y: 63 },
+  "Slateport City": { x: 26, y: 49 },
+  "Mauville City": { x: 26, y: 27 },
+  "Route 117": { x: 21, y: 27 },
+  "Verdanturf Town": { x: 18, y: 27 },
+  "Route 111": { x: 26, y: 14 },
+  "Route 112": { x: 22, y: 11 },
+  "Rustboro City": { x: 11, y: 30 },
+  "Route 116": { x: 15, y: 24 },
+  "Lavaridge Town": { x: 20, y: 15 },
+  "Route 115": { x: 8, y: 15 },
+  "Route 114": { x: 12, y: 9 },
+  "Route 113": { x: 20, y: 5 },
+  "Fallarbor Town": { x: 14, y: 5 },
+  "Route 118": { x: 31, y: 27 },
+  "Route 119": { x: 33, y: 14 },
+  "Fortree City": { x: 36, y: 5 },
+  "Route 120": { x: 40, y: 12 },
+  "Route 123": { x: 40, y: 27 },
+  "Route 121": { x: 45, y: 18 },
+  "Route 122": { x: 45, y: 22 },
+  "Lilycove City": { x: 52, y: 18 },
+  "Route 124": { x: 59, y: 19 },
+  "Route 125": { x: 66, y: 16 },
+  "Route 126": { x: 59, y: 31 },
+  "Route 127": { x: 66, y: 31 },
+  "Route 128": { x: 68, y: 42 },
+  "Route 129": { x: 66, y: 48 },
+  "Route 130": { x: 59, y: 48 },
+  "Mossdeep City": { x: 66, y: 22 },
+  "Route 134": { x: 31, y: 48 },
+  "Route 133": { x: 38, y: 48 },
+  "Route 132": { x: 45, y: 48 },
+  "Pacifidlog Town": { x: 50, y: 48 },
+  "Route 131": { x: 52, y: 47 },
+  "Ever Grande City": { x: 75, y: 33 },
+  "Meteor Falls": { x: 12, y: 12 },
+  "Rusturf Tunnel": { x: 16, y: 25 },
+  "Granite Cave": { x: 12, y: 62 },
+  "Petalburg Woods": { x: 8, y: 36 },
+  "Mt. Pyre": { x: 46, y: 22 },
+  "Safari Zone": { x: 44, y: 14 },
+  "Shoal Cave": { x: 66, y: 14 },
+  "Cave of Origin": { x: 59, y: 31 }, // approximate Sootopolis City
+  "Sootopolis City": { x: 59, y: 31 },
+  "Victory Road": { x: 73, y: 33 },
+  "Sky Pillar": { x: 53, y: 42 },
+  "Fiery Path": { x: 23, y: 11 },
+  "Jagged Pass": { x: 21, y: 13 },
+  "Mt. Chimney": { x: 21, y: 12 },
+  "New Mauville": { x: 26, y: 29 },
+  "Abandoned Ship": { x: 23, y: 68 },
+  "Scorched Slab": { x: 41, y: 12 }
+};
+
+const hoennConnections = [
+  ["Littleroot Town", "Route 101"],
+  ["Route 101", "Oldale Town"],
+  ["Oldale Town", "Route 102"],
+  ["Oldale Town", "Route 103"],
+  ["Route 102", "Petalburg City"],
+  ["Petalburg City", "Route 104"],
+  ["Route 104", "Rustboro City"],
+  ["Route 104", "Petalburg Woods"],
+  ["Rustboro City", "Route 115"],
+  ["Rustboro City", "Route 116"],
+  ["Route 116", "Rusturf Tunnel"],
+  ["Rusturf Tunnel", "Verdanturf Town"],
+  ["Verdanturf Town", "Route 117"],
+  ["Route 117", "Mauville City"],
+  ["Rustboro City", "Route 105"],
+  ["Route 105", "Route 106"],
+  ["Route 106", "Dewford Town"],
+  ["Dewford Town", "Granite Cave"],
+  ["Dewford Town", "Route 107"],
+  ["Route 107", "Route 108"],
+  ["Route 108", "Route 109"],
+  ["Route 109", "Slateport City"],
+  ["Slateport City", "Route 110"],
+  ["Route 110", "Mauville City"],
+  ["Mauville City", "Route 111"],
+  ["Route 111", "Route 112"],
+  ["Route 112", "Fiery Path"],
+  ["Fiery Path", "Route 111"], // North side
+  ["Route 112", "Mt. Chimney"],
+  ["Mt. Chimney", "Jagged Pass"],
+  ["Jagged Pass", "Route 112"],
+  ["Route 111", "Route 113"],
+  ["Route 113", "Fallarbor Town"],
+  ["Fallarbor Town", "Route 114"],
+  ["Route 114", "Meteor Falls"],
+  ["Meteor Falls", "Route 115"],
+  ["Mauville City", "Route 118"],
+  ["Route 118", "Route 119"],
+  ["Route 119", "Fortree City"],
+  ["Fortree City", "Route 120"],
+  ["Route 120", "Route 121"],
+  ["Route 121", "Lilycove City"],
+  ["Route 121", "Safari Zone"],
+  ["Route 121", "Route 122"],
+  ["Route 122", "Mt. Pyre"],
+  ["Route 122", "Route 123"],
+  ["Route 123", "Route 118"],
+  ["Lilycove City", "Route 124"],
+  ["Route 124", "Mossdeep City"],
+  ["Mossdeep City", "Route 125"],
+  ["Route 125", "Shoal Cave"],
+  ["Mossdeep City", "Route 127"],
+  ["Route 124", "Route 126"],
+  ["Route 126", "Sootopolis City"],
+  ["Sootopolis City", "Cave of Origin"],
+  ["Route 127", "Route 128"],
+  ["Route 128", "Ever Grande City"],
+  ["Ever Grande City", "Victory Road"],
+  ["Route 128", "Route 129"],
+  ["Route 129", "Route 130"],
+  ["Route 130", "Route 131"],
+  ["Route 131", "Pacifidlog Town"],
+  ["Route 131", "Sky Pillar"],
+  ["Pacifidlog Town", "Route 132"],
+  ["Route 132", "Route 133"],
+  ["Route 133", "Route 134"],
+  ["Route 134", "Slateport City"] // Approx connection for the currents
+];
+
 export default function App() {
+
   const [gameState, setGameState] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
@@ -103,6 +245,10 @@ export default function App() {
   const [logQueue, setLogQueue] = useState<string[]>([]);
   const [typingLog, setTypingLog] = useState<string | null>(null);
   const [lastLogVersion, setLastLogVersion] = useState(0);
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [locations, setLocations] = useState<any[]>([]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
@@ -191,6 +337,16 @@ export default function App() {
       setGraphData(data);
     } catch (e) {
       console.error('Failed to fetch graph', e);
+    }
+  };
+
+  const fetchLocations = async () => {
+    try {
+      const res = await fetch('/api/locations');
+      const data = await res.json();
+      setLocations(data);
+    } catch (e) {
+      console.error('Failed to fetch locations', e);
     }
   };
 
@@ -342,11 +498,44 @@ export default function App() {
         </div>
 
         {/* Menu Bar */}
-        <div className="win98-menubar shrink-0 text-sm">
-          <div className="win98-menuitem">파일(F)</div>
+        <div className="win98-menubar shrink-0 text-sm relative">
+          <div className="win98-menuitem relative" onClick={() => setShowFileMenu(!showFileMenu)}>
+            파일(F)
+            {showFileMenu && (
+              <div className="win98-dropdown">
+                <div 
+                  className="win98-dropdown-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFileMenu(false);
+                    handleStart(1);
+                  }}
+                >
+                  리셋(R)
+                </div>
+              </div>
+            )}
+          </div>
           <div className="win98-menuitem">편집(E)</div>
           <div className="win98-menuitem" onClick={() => { setShowGraph(!showGraph); if(!showGraph) fetchGraph(); }}>보기(V)</div>
-          <div className="win98-menuitem">동작(A)</div>
+          <div className="win98-menuitem relative" onClick={() => setShowActionMenu(!showActionMenu)}>
+            동작(A)
+            {showActionMenu && (
+              <div className="win98-dropdown">
+                <div 
+                  className="win98-dropdown-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowActionMenu(false);
+                    setShowMap(true);
+                    fetchLocations();
+                  }}
+                >
+                  맵
+                </div>
+              </div>
+            )}
+          </div>
           <div className="win98-menuitem">도움말(H)</div>
         </div>
 
@@ -413,7 +602,7 @@ export default function App() {
               </div>
               <div className="w-20 ml-2 flex flex-col">
                 <button onClick={() => toggleAutoBattle()} className={`win98-button w-full h-full font-bold text-sm ${isAutoBattling ? 'text-red-700' : 'text-black'}`}>
-                   {isAutoBattling ? '전송\n중지' : '전송(S)'}
+                  {isAutoBattling ? '자동 중지' : '자동 전투'}
                 </button>
               </div>
             </div>
@@ -494,6 +683,93 @@ export default function App() {
                   <pre className="text-xs text-black font-mono">
                     {JSON.stringify(graphData, null, 2)}
                   </pre>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Map Overlay */}
+      {showMap && (
+        <div className="fixed inset-0 bg-black/50 z-50 p-4 md:p-8 flex items-center justify-center">
+          <div className="win98-window w-full max-w-4xl max-h-[90vh] flex flex-col">
+             <div className="win98-titlebar">
+               <span>타운 맵 (Town Map)</span>
+               <button onClick={() => setShowMap(false)} className="bg-[#c0c0c0] text-black w-4 h-4 flex items-center justify-center border border-t-white border-l-white border-b-black border-r-black font-bold">X</button>
+             </div>
+             <div className="p-2 bg-[#c0c0c0] flex-1 flex flex-col min-h-0">
+                <div className="win98-inset bg-[#78C850] flex-1 relative overflow-auto flex items-center justify-center">
+                  <div className="relative w-[800px] max-w-full aspect-[494/308] bg-blue-300 border-4 border-double border-white shadow-lg m-auto shrink-0 overflow-hidden"
+                        style={{ backgroundImage: 'url("https://raw.githubusercontent.com/lowlighter/gracidea/main/copyrighted/textures/all/regions/hoenn.png")', backgroundSize: '100% 100%', imageRendering: 'pixelated' }}>
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                      {hoennConnections.map(([from, to], idx) => {
+                        const fromCoord = hoennCoords[from];
+                        const toCoord = hoennCoords[to];
+                        if (fromCoord && toCoord) {
+                          return (
+                            <line 
+                              key={idx} 
+                              x1={`${fromCoord.x}%`} 
+                              y1={`${fromCoord.y}%`} 
+                              x2={`${toCoord.x}%`} 
+                              y2={`${toCoord.y}%`} 
+                              stroke="white" 
+                              strokeWidth="4" 
+                              strokeLinecap="round" 
+                            />
+                          );
+                        }
+                        return null;
+                      })}
+                    </svg>
+                    {/* Map nodes */}
+                    {Object.entries(locations.reduce((acc, loc) => {
+                      const name = loc.name || loc.loc || loc.identifier;
+                      if (!acc[name]) acc[name] = [];
+                      acc[name].push(loc);
+                      return acc;
+                    }, {} as Record<string, any[]>)).map(([name, areas]: [string, any], index: number) => {
+                      const coord = hoennCoords[name];
+                      if (!coord) {
+                        return null; // hide unknown locations like Sevii islands to keep map clean
+                      }
+                      
+                      const { x, y } = coord;
+                      
+                      const isCity = name.includes('City') || name.includes('Town') || name.includes('Island') || name.includes('Plateau');
+                      const nodeColor = isCity ? 'bg-[#FF4040]' : 'bg-[#4080FF]';
+                      const nodeShape = isCity ? 'w-5 h-5 rounded-sm' : 'w-3 h-3 rounded-full';
+                      
+                      return (
+                        <div 
+                          key={name}
+                          className="absolute group flex flex-col items-center justify-center"
+                          style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
+                        >
+                          <div className={`${nodeShape} ${nodeColor} border-2 border-white shadow-md group-hover:scale-125 transition-transform cursor-pointer`} />
+                          <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 border border-black px-1 text-[10px] font-bold whitespace-nowrap z-10 pointer-events-none group-hover:block hidden md:block">
+                            {name}
+                          </div>
+                          <div className="absolute hidden group-hover:flex flex-col top-full left-1/2 -translate-x-1/2 mt-1 z-20 bg-[#c0c0c0] border border-t-white border-l-white border-b-black border-r-black p-1 shadow-lg w-max max-h-40 overflow-y-auto">
+                            <div className="text-xs font-bold mb-1 border-b border-gray-400 pb-1">{name}</div>
+                            {areas.map((area: any) => (
+                              <button 
+                                key={area.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAction('TRAVEL', { locationAreaId: area.id });
+                                  setShowMap(false);
+                                }}
+                                className="win98-button text-[10px] my-[1px] text-left hover:bg-[#000080] hover:text-white truncate px-2 py-1"
+                              >
+                                {area.identifier || '이동하기'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
              </div>
           </div>

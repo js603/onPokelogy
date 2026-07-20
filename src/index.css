@@ -70,6 +70,28 @@
     background-color: #000080;
     color: white;
   }
+  .win98-dropdown {
+    background-color: #c0c0c0;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #000000;
+    border-right: 2px solid #000000;
+    padding: 2px;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 50;
+    min-width: 120px;
+  }
+  .win98-dropdown-item {
+    padding: 2px 16px 2px 12px;
+    cursor: pointer;
+    color: black;
+  }
+  .win98-dropdown-item:hover {
+    background-color: #000080;
+    color: white;
+  }
 }
 
 @keyframes flashOut {
