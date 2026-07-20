@@ -1,6 +1,96 @@
 import { useEffect, useState, useRef } from 'react';
 import { Terminal, Database, Activity, Play, X, Minus, Square, User } from 'lucide-react';
 
+const TypewriterText = ({ text, speed = 10, onComplete }: { text: string, speed?: number, onComplete?: () => void }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+  
+  useEffect(() => {
+    let i = 0;
+    setDisplayedText('');
+    const timer = setInterval(() => {
+      setDisplayedText(text.substring(0, i + 1));
+      i++;
+      if (i >= text.length) {
+        clearInterval(timer);
+        if (onCompleteRef.current) onCompleteRef.current();
+      }
+    }, speed);
+    return () => clearInterval(timer);
+  }, [text, speed]);
+
+  return <span>{displayedText}</span>;
+}
+
+const LogMessage = ({ log, gameState, isTyping, onTypingComplete }: { key?: any, log: string, gameState: any, isTyping?: boolean, onTypingComplete?: () => void }) => {
+  const isImportant = log.includes('레벨업') || log.includes('진화');
+  const isSystem = log.includes('시맨틱') || isImportant || log.includes('승리') || log.includes('잡았다') || log.includes('도망') || log.includes('나타났다') || log.includes('발견') || log.includes('휴식');
+  
+  let speaker = '';
+  let message = log;
+  let speakerColor = '';
+
+  if (!isSystem) {
+    if (log.includes('주인공')) {
+      speaker = gameState.player?.name || '나';
+      speakerColor = 'text-blue-600';
+      message = log.replace(/주인공\(.*?\)(이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
+    } else if (log.includes('적 ')) {
+      speaker = gameState.enemy?.name || '상대';
+      speakerColor = 'text-red-600';
+      message = log.replace(/적\s+[^\s(]+(\(.*?\))?(이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
+    } else if (gameState.player && log.startsWith(gameState.player.name)) {
+      speaker = gameState.player.name;
+      speakerColor = 'text-blue-600';
+      message = log.replace(new RegExp(`^${gameState.player.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
+    } else if (gameState.enemy && log.startsWith(gameState.enemy.name)) {
+      speaker = gameState.enemy.name;
+      speakerColor = 'text-red-600';
+      message = log.replace(new RegExp(`^${gameState.enemy.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
+    } else {
+      speaker = '시스템';
+      speakerColor = 'text-gray-600';
+    }
+  }
+
+  const isMyMessage = speaker === gameState.player?.name || speaker === '나';
+
+  return (
+    <div className={`mb-3 leading-snug flex flex-col ${isSystem ? 'items-center' : isMyMessage ? 'items-end' : 'items-start'} ${isImportant ? 'log-important' : ''}`}>
+      {isSystem ? (
+        <div className="text-gray-500 text-center italic text-[11px] py-1 border-y border-gray-100 my-1 bg-gray-50 w-full">
+          {isTyping ? <TypewriterText text={log} onComplete={onTypingComplete} speed={15} /> : <span>{log}</span>}
+        </div>
+      ) : (
+        <div className={`max-w-[80%] flex flex-col ${isMyMessage ? 'items-end' : 'items-start'}`}>
+          {speaker && (
+            <div className="mb-0.5 font-sans flex items-center gap-1">
+              {isMyMessage ? (
+                <>
+                  <span className="text-gray-400 text-[10px]">말함</span>
+                  <span className={`font-bold ${speakerColor} text-xs`}>{speaker}</span>
+                </>
+              ) : (
+                <>
+                  <span className={`font-bold ${speakerColor} text-xs`}>{speaker}</span>
+                  <span className="text-gray-400 text-[10px]">말함</span>
+                </>
+              )}
+            </div>
+          )}
+          <div className={`px-2 py-1 rounded-sm border ${isMyMessage ? 'bg-[#ffffe0] border-yellow-300 text-right' : 'bg-[#f0f8ff] border-blue-200 text-left'} text-xs ${message.includes('피해') ? 'text-red-600 font-bold' : 'text-black'}`}>
+            {isTyping ? <TypewriterText text={message} onComplete={onTypingComplete} speed={15} /> : <span>{message}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [gameState, setGameState] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -9,7 +99,18 @@ export default function App() {
   const [isAutoBattling, setIsAutoBattling] = useState(false);
   const autoBattleRef = useRef(false);
   
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [visibleLogs, setVisibleLogs] = useState<string[]>([]);
+  const [logQueue, setLogQueue] = useState<string[]>([]);
+  const [typingLog, setTypingLog] = useState<string | null>(null);
+  const [lastLogVersion, setLastLogVersion] = useState(0);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
+
+  const handleScroll = (e: any) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    autoScrollRef.current = Math.abs(scrollHeight - Math.ceil(scrollTop) - clientHeight) < 50;
+  };
   
   const gameStateRef = useRef(gameState);
   useEffect(() => {
@@ -17,21 +118,80 @@ export default function App() {
   }, [gameState]);
 
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!scrollContainerRef.current) return;
+    const observer = new MutationObserver(() => {
+      if (autoScrollRef.current && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      }
+    });
+    observer.observe(scrollContainerRef.current, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typingLog) {
+      const interval = setInterval(() => {
+        if (autoScrollRef.current && scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, 50);
+      return () => clearInterval(interval);
     }
-  }, [gameState?.logs]);
+  }, [typingLog]);
+
+  useEffect(() => {
+    if (gameState?.logs) {
+      if (gameState.logs.length < lastLogVersion) {
+        // Reset
+        setVisibleLogs(gameState.logs);
+        setLogQueue([]);
+        setTypingLog(null);
+        setLastLogVersion(gameState.logs.length);
+      } else if (gameState.logs.length > lastLogVersion) {
+        const newLogs = gameState.logs.slice(lastLogVersion);
+        if (lastLogVersion === 0 && visibleLogs.length === 0 && !typingLog) {
+          // initial load
+          setVisibleLogs(gameState.logs);
+        } else {
+          setLogQueue(prev => [...prev, ...newLogs]);
+        }
+        setLastLogVersion(gameState.logs.length);
+      }
+    }
+  }, [gameState?.logs, lastLogVersion, visibleLogs.length, typingLog]);
+
+  useEffect(() => {
+    if (!typingLog && logQueue.length > 0) {
+      setTypingLog(logQueue[0]);
+      setLogQueue(prev => prev.slice(1));
+    }
+  }, [typingLog, logQueue]);
+
+  const handleTypingComplete = () => {
+    if (typingLog) {
+      setVisibleLogs(prev => [...prev, typingLog]);
+      setTypingLog(null);
+    }
+  };
 
   const fetchState = async () => {
-    const res = await fetch('/api/state');
-    const data = await res.json();
-    setGameState(data);
+    try {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      setGameState(data);
+    } catch (e) {
+      console.error('Failed to fetch state', e);
+    }
   };
 
   const fetchGraph = async () => {
-    const res = await fetch('/api/graph');
-    const data = await res.json();
-    setGraphData(data);
+    try {
+      const res = await fetch('/api/graph');
+      const data = await res.json();
+      setGraphData(data);
+    } catch (e) {
+      console.error('Failed to fetch graph', e);
+    }
   };
 
   useEffect(() => {
@@ -40,67 +200,76 @@ export default function App() {
 
   const handleStart = async (starterId: number) => {
     setLoading(true);
-    const res = await fetch('/api/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ starterId })
-    });
-    const data = await res.json();
-    setGameState(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ starterId })
+      });
+      const data = await res.json();
+      setGameState(data);
+    } catch (e) {
+      console.error('Failed to start', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const [evolvingData, setEvolvingData] = useState<any>(null);
 
   const handleAction = async (action: string, payload?: any) => {
     setLoading(true);
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, payload })
-    });
-    const data = await res.json();
-    
-    if (data.evolutionEvent) {
-      setEvolvingData(data.evolutionEvent);
-      setTimeout(() => {
-        setEvolvingData(null);
-      }, 4000);
-    }
-    
-    setGameState(data);
-    setLoading(false);
-    return data;
-  };
-
-  const runAutoBattle = async () => {
-    if (!autoBattleRef.current) return;
-    
-    const currentGameState = gameStateRef.current;
-    
-    if (currentGameState?.player?.hp <= 0) {
-      autoBattleRef.current = false;
-      setIsAutoBattling(false);
-      return;
-    }
-
-    let data;
-    if (currentGameState?.enemy) {
-      data = await handleAction('AUTO_TICK');
-    } else {
-      data = await handleAction('EXPLORE');
-    }
-    
-    if (autoBattleRef.current && data?.player?.hp > 0) {
-      setTimeout(runAutoBattle, 1500);
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      });
+      const data = await res.json();
+      
+      if (data.evolutionEvent) {
+        setEvolvingData(data.evolutionEvent);
+        setTimeout(() => {
+          setEvolvingData(null);
+        }, 4000);
+      }
+      
+      setGameState(data);
+      setLoading(false);
+      return data;
+    } catch (e) {
+      console.error('Failed to perform action', e);
+      setLoading(false);
+      return null;
     }
   };
+
+  useEffect(() => {
+    let timer: any;
+    if (isAutoBattling && !typingLog && logQueue.length === 0 && !loading) {
+      const currentGameState = gameStateRef.current;
+      if (currentGameState?.player?.hp <= 0) {
+        setIsAutoBattling(false);
+        autoBattleRef.current = false;
+      } else {
+        timer = setTimeout(() => {
+          if (autoBattleRef.current && !loading && !typingLog && logQueue.length === 0) {
+            if (currentGameState?.enemy) {
+              handleAction('AUTO_TICK');
+            } else {
+              handleAction('EXPLORE');
+            }
+          }
+        }, 500); // Wait a bit after logs are done typing
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [isAutoBattling, typingLog, logQueue.length, loading]);
 
   const toggleAutoBattle = () => {
     if (!isAutoBattling) {
       setIsAutoBattling(true);
       autoBattleRef.current = true;
-      runAutoBattle();
     } else {
       setIsAutoBattling(false);
       autoBattleRef.current = false;
@@ -190,56 +359,13 @@ export default function App() {
               <div className="text-gray-500 mb-2 border-b border-gray-200 pb-1 text-sm">
                 {gameState.enemy ? `${gameState.enemy.name} 님이 대화에 참여했습니다.` : '대화 상대를 찾는 중...'}
               </div>
-              <div className="flex-1 overflow-y-auto pr-2 font-sans">
-                {gameState.logs.map((log: string, i: number) => {
-                  const isImportant = log.includes('레벨업') || log.includes('진화');
-                  const isSystem = log.includes('시맨틱') || isImportant || log.includes('승리') || log.includes('잡았다') || log.includes('도망') || log.includes('나타났다') || log.includes('발견') || log.includes('휴식');
-                  
-                  let speaker = '';
-                  let message = log;
-                  let speakerColor = '';
-
-                  if (!isSystem) {
-                    if (log.includes('주인공')) {
-                      speaker = gameState.player?.name || '나';
-                      speakerColor = 'text-blue-600';
-                      message = log.replace(/주인공\(.*?\)(은\(는\)|은|는|의|이|가)?\s*/, '');
-                    } else if (log.includes('적 ') || (gameState.enemy && log.includes(gameState.enemy.name))) {
-                      speaker = gameState.enemy?.name || '상대';
-                      speakerColor = 'text-red-600';
-                      message = log.replace(/적\s*/, '');
-                      if (gameState.enemy) {
-                        message = message.replace(new RegExp(`${gameState.enemy.name}(은\\(는\\)|은|는|의|이|가)?\\s*`), '');
-                      }
-                    } else {
-                      speaker = '시스템';
-                      speakerColor = 'text-gray-600';
-                    }
-                  }
-
-                  return (
-                    <div key={i} className={`mb-3 leading-snug ${isImportant ? 'log-important' : ''}`}>
-                      {isSystem ? (
-                        <div className="text-gray-500 text-center italic text-[11px] py-1 border-y border-gray-100 my-1 bg-gray-50">
-                          {log}
-                        </div>
-                      ) : (
-                        <div>
-                          {speaker && (
-                            <div className="mb-0.5 font-sans">
-                              <span className={`font-bold ${speakerColor} text-xs`}>{speaker}</span>
-                              <span className="text-gray-500 text-[11px] ml-1">말함:</span>
-                            </div>
-                          )}
-                          <div className={`ml-3 text-xs ${message.includes('피해') ? 'text-red-600 font-bold' : 'text-black'}`}>
-                            {message}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <div ref={bottomRef} />
+              <div className="flex-1 overflow-y-auto pr-2 font-sans" ref={scrollContainerRef} onScroll={handleScroll}>
+                {visibleLogs.map((log: string, i: number) => (
+                  <LogMessage key={i} log={log} gameState={gameState} isTyping={false} />
+                ))}
+                {typingLog && (
+                  <LogMessage key="typing" log={typingLog} gameState={gameState} isTyping={true} onTypingComplete={handleTypingComplete} />
+                )}
               </div>
             </div>
 
@@ -264,10 +390,6 @@ export default function App() {
                  <div className="text-gray-400 text-xs mb-1 italic absolute top-2 left-2">여기에 동작을 선택하여 메시지를 작성하세요...</div>
                  
                  <div className="flex gap-1 sm:gap-2 w-full h-8">
-                   <button onClick={() => handleAction('EXPLORE')} className="win98-button flex-1 font-bold text-[10px] sm:text-xs px-1 whitespace-nowrap overflow-hidden text-ellipsis">
-                     탐험(상대찾기)
-                   </button>
-                   
                    {gameState.enemy ? (
                       <button className="win98-button flex-1 text-gray-500 cursor-not-allowed text-[10px] sm:text-xs px-1 whitespace-nowrap overflow-hidden text-ellipsis" onClick={(e) => e.preventDefault()}>
                         휴식(비활성)

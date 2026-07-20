@@ -84,10 +84,13 @@ export class GameEngine {
 
     await this.ontology.loadPokemon(nextSpeciesName, 'player');
     
-    const newName = this.store.getValue(playerUri, "poke:name");
+    const rawName = this.store.getValue(playerUri, "poke:name") || "";
+    const newName = `주인공(${rawName})`;
+    this.store.update(playerUri, "poke:name", newName);
+    
     const newSprite = this.store.getValue(playerUri, "poke:spriteFront") || "";
 
-    this.log(`축하합니다! 포켓몬은 ${newName}(으)로 진화했습니다!`);
+    this.log(`축하합니다! ${oldName}은(는) ${newName}(으)로 진화했습니다!`);
     
     if (currentExp) this.store.update(playerUri, "poke:experience", currentExp);
     if (currentLevel) {
@@ -254,7 +257,9 @@ export class GameEngine {
             if (speciesName) {
                 this.store.remove(playerUri, null, null); 
                 await this.ontology.loadPokemon(speciesName, 'player'); 
-                const newName = this.store.getValue(playerUri, "poke:name");
+                const rawName = this.store.getValue(playerUri, "poke:name");
+                const newName = `주인공(${rawName})`;
+                this.store.update(playerUri, "poke:name", newName);
                 
                 this.log(`[온톨로지 업데이트] 주인공 엔티티가 ${newName}(으)로 전환되었습니다.`);
                 this.log(`이제부터 ${newName}와(과) 함께 모험을 떠난다!`);
