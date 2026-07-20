@@ -66,8 +66,7 @@ export class GameEngine {
   }
   
   async spawnWildPokemon() {
-    const wildIds = [10, 13, 16, 19, 41, 43, 69]; // Caterpie, Weedle, Pidgey, Rattata, Zubat, Oddish, Bellsprout
-    const randomId = wildIds[Math.floor(Math.random() * wildIds.length)];
+    const randomId = Math.floor(Math.random() * 151) + 1;
     
     const enemyUri = await this.ontology.loadPokemon(randomId, 'enemy');
     const enemyName = this.store.getValue(enemyUri, "poke:name");

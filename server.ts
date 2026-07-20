@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GameEngine } from './src/engine/GameEngine';
+import { initializeDatabase } from './src/db/init';
 
 const app = express();
 const PORT = 3000;
@@ -74,6 +75,8 @@ app.post('/api/sparql', (req, res) => {
 
 // -- Vite Middleware --
 async function startServer() {
+  await initializeDatabase();
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
