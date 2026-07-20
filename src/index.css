@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@layer components {
+  .win98-window {
+    background-color: #c0c0c0;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #000000;
+    border-right: 2px solid #000000;
+    box-shadow: inset -1px -1px #dfdfdf, inset 1px 1px #0a0a0a;
+    color: black;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+  }
+  .win98-titlebar {
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: white;
+    font-weight: bold;
+    padding: 2px 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .win98-button {
+    background-color: #c0c0c0;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #000000;
+    border-right: 2px solid #000000;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+  }
+  .win98-button:active, .win98-button.active {
+    border-top: 2px solid #000000;
+    border-left: 2px solid #000000;
+    border-bottom: 2px solid #ffffff;
+    border-right: 2px solid #ffffff;
+    padding-top: 5px;
+    padding-left: 13px;
+    padding-bottom: 3px;
+    padding-right: 11px;
+  }
+  .win98-button:disabled {
+    color: #808080;
+    text-shadow: 1px 1px 0px #ffffff;
+    cursor: not-allowed;
+  }
+  .win98-inset {
+    background-color: #ffffff;
+    border-top: 2px solid #808080;
+    border-left: 2px solid #808080;
+    border-bottom: 2px solid #ffffff;
+    border-right: 2px solid #ffffff;
+    box-shadow: inset 1px 1px #000000, inset -1px -1px #dfdfdf;
+  }
+  .win98-menubar {
+    background-color: #c0c0c0;
+    border-bottom: 1px solid #808080;
+    display: flex;
+    gap: 16px;
+    padding: 2px 8px;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    color: black;
+  }
+  .win98-menuitem {
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .win98-menuitem:hover {
+    background-color: #000080;
+    color: white;
+  }
+}
+
+@keyframes flashOut {
+  0% { opacity: 1; filter: brightness(1); }
+  25% { filter: brightness(2); }
+  50% { opacity: 1; filter: brightness(10); }
+  75% { opacity: 0; filter: brightness(10); }
+  100% { opacity: 0; filter: brightness(1); }
+}
+
+@keyframes flashIn {
+  0% { opacity: 0; filter: brightness(10); }
+  25% { opacity: 0; filter: brightness(10); }
+  50% { opacity: 1; filter: brightness(10); }
+  75% { filter: brightness(2); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+.animate-flash-out {
+  animation: flashOut 4s ease-in-out forwards;
+}
+
+.animate-flash-in {
+  animation: flashIn 4s ease-in-out forwards;
+}
+
+@keyframes logHighlight {
+  0% { background-color: #ffd700; transform: scale(0.98); }
+  50% { background-color: #ffb800; transform: scale(1.02); }
+  100% { background-color: #fff8cc; transform: scale(1); }
+}
+
+.log-important {
+  animation: logHighlight 1s ease-out forwards;
+  font-weight: bold;
+  color: #d97706;
+  padding: 4px 8px;
+  margin: 4px 0;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}

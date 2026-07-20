@@ -1,0 +1,6 @@
+{
+  "name": "Semantic PokeSim",
+  "description": "A text-based Pokemon simulator powered by Semantic Web techniques (Knowledge Graphs, Ontologies) and PokeAPI. No AI generation, purely data-driven.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
