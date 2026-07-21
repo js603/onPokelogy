@@ -52,8 +52,75 @@ export class TripleStore {
       // Rule 1: Type effectiveness transitivity (if needed)
       // We will handle effectiveness dynamically in battle logic for simplicity,
       // but we could infer explicit "moveX dealsDoubleDamageTo pokemonY"
+      const allMoves = this.query(null, "rdf:type", "poke:Move");
+      const allPokemon = this.query(null, "rdf:type", "poke:Pokemon");
       
-      // Note: Type effectiveness and evolution are now handled via DataLayer (SQL)
+      for (const move of allMoves) {
+        const moveS = move[0];
+        const moveType = this.getValue(moveS, "poke:hasType");
+        
+        for (const pkmn of allPokemon) {
+          const pkmnS = pkmn[0];
+          const pkmnTypes = this.query(pkmnS, "poke:hasType", null).map(t => t[2]);
+          
+          if (moveType) {
+            let multiplier = 1;
+            for (const pType of pkmnTypes) {
+               const dDouble = this.query(moveType, "poke:doubleDamageTo", pType).length > 0;
+               const dHalf = this.query(moveType, "poke:halfDamageTo", pType).length > 0;
+               const dNo = this.query(moveType, "poke:noDamageTo", pType).length > 0;
+               if (dDouble) multiplier *= 2;
+               if (dHalf) multiplier *= 0.5;
+               if (dNo) multiplier *= 0;
+            }
+            
+            // Infer explicit relationships
+            if (multiplier > 1) {
+              const current = this.query(moveS, "poke:isSuperEffectiveAgainst", pkmnS);
+              if (current.length === 0) {
+                this.add(moveS, "poke:isSuperEffectiveAgainst", pkmnS);
+                added = true;
+              }
+            } else if (multiplier < 1 && multiplier > 0) {
+              const current = this.query(moveS, "poke:isNotVeryEffectiveAgainst", pkmnS);
+              if (current.length === 0) {
+                this.add(moveS, "poke:isNotVeryEffectiveAgainst", pkmnS);
+                added = true;
+              }
+            } else if (multiplier === 0) {
+              const current = this.query(moveS, "poke:hasNoEffectOn", pkmnS);
+              if (current.length === 0) {
+                this.add(moveS, "poke:hasNoEffectOn", pkmnS);
+                added = true;
+              }
+            }
+          }
+        }
+      }
+      
+      // Rule 2: Evolution readiness
+      for (const pkmn of allPokemon) {
+        const pkmnS = pkmn[0];
+        const species = this.getValue(pkmnS, "poke:species");
+        const levelStr = this.getValue(pkmnS, "poke:level");
+        
+        if (species && levelStr) {
+          const level = parseInt(levelStr, 10);
+          const evolvesTo = this.getValue(species, "poke:evolvesTo");
+          const minLevelStr = this.getValue(species, "poke:minLevel");
+          
+          if (evolvesTo && minLevelStr) {
+            const minLevel = parseInt(minLevelStr, 10);
+            if (level >= minLevel) {
+               const current = this.query(pkmnS, "poke:readyToEvolveTo", evolvesTo);
+               if (current.length === 0) {
+                 this.add(pkmnS, "poke:readyToEvolveTo", evolvesTo);
+                 added = true;
+               }
+            }
+          }
+        }
+      }
     } while (added); // Run until no new facts are inferred
   }
 

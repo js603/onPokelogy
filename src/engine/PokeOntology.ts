@@ -76,23 +76,6 @@ export class PokeOntology {
       await this.loadTypeRelations(typeStr, t.type_id);
     }
 
-
-    // Abilities
-    const abilitiesQuery = db.prepare(`
-      SELECT a.identifier, an.name 
-      FROM pokemon_abilities pa 
-      JOIN abilities a ON pa.ability_id = a.id 
-      LEFT JOIN ability_names an ON a.id = an.ability_id AND an.local_language_id = 3
-      WHERE pa.pokemon_id = ?
-    `).all(pkmnId) as any[];
-    
-    for (const ab of abilitiesQuery) {
-      const abUri = `${POKE_PREFIX}ability_${ab.identifier}`;
-      this.store.add(abUri, "rdf:type", `${POKE_PREFIX}Ability`);
-      this.store.add(abUri, `${POKE_PREFIX}name`, ab.name || ab.identifier);
-      this.store.add(pkmnUri, `${POKE_PREFIX}hasAbility`, abUri);
-    }
-
     // Evolution
     if (role === 'player') {
       const evos = db.prepare(`

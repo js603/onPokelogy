@@ -2,8 +2,10 @@ import path from 'path';
 import axios from 'axios';
 import Database from 'better-sqlite3';
 import Papa from 'papaparse';
+import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'pokedex.sqlite');
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_PATH = path.join(DATA_DIR, 'pokedex.sqlite');
 const POKEAPI_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv';
 
 const filesToLoad = [
@@ -21,13 +23,13 @@ const filesToLoad = [
   'locations.csv',
   'location_names.csv',
   'location_areas.csv',
-  'encounters.csv',
-  'abilities.csv',
-  'ability_names.csv',
-  'pokemon_abilities.csv'
+  'encounters.csv'
 ];
 
 export async function initializeDatabase() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
   const db = new Database(DB_PATH);
   
   for (const filename of filesToLoad) {
