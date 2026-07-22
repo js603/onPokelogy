@@ -9,7 +9,7 @@ export class GameEngine {
   public evolutionEvent: any = null;
   public nextAction: string | null = null;
   
-  public currentLocationAreaId: number = 295; // Default: kanto-route-1
+  public currentLocationId: string = 'area_295'; // Default: kanto-route-1
 
   constructor() {
     this.store = new TripleStore();
@@ -31,7 +31,7 @@ export class GameEngine {
     
     this.store.add(playerUri, "rdf:type", "poke:Pokemon"); 
     this.store.add(playerUri, "poke:species", "poke:species_human");
-    this.store.add(playerUri, "poke:name", "주인공(인간)");
+    this.store.add(playerUri, "poke:name", "오박사");
     this.store.add(playerUri, "poke:maxHP", "120");
     this.store.add(playerUri, "poke:currentHP", "120");
     this.store.add(playerUri, "poke:attack", "20");
@@ -61,13 +61,27 @@ export class GameEngine {
     // 지역 이름 조회
     const { getDb } = await import('../db/index.js');
     const db = getDb();
-    const loc = db.prepare(`
-      SELECT ln.name, l.identifier 
-      FROM location_areas a 
-      JOIN locations l ON a.location_id = l.id 
-      LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
-      WHERE a.id = ?
-    `).get(String(this.currentLocationAreaId)) as any;
+    
+    const isArea = this.currentLocationId.startsWith('area_');
+    const idNum = this.currentLocationId.replace(/[^0-9]/g, '');
+    let loc;
+    if (isArea) {
+      loc = db.prepare(`
+        SELECT ln.name, l.identifier 
+        FROM location_areas a 
+        JOIN locations l ON a.location_id = l.id 
+        LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+        WHERE a.id = ?
+      `).get(idNum) as any;
+    } else {
+      loc = db.prepare(`
+        SELECT ln.name, l.identifier 
+        FROM locations l 
+        LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+        WHERE l.id = ?
+      `).get(idNum) as any;
+    }
+  
     
     let locName = loc ? (loc.name || loc.identifier) : '알 수 없는 장소';
     const translateMap: Record<string, string> = {
@@ -88,19 +102,59 @@ export class GameEngine {
     this.store.infer();
   }
   
+
   async spawnWildPokemon() {
-    const { getDb } = await import('../db/index');
+    const { getDb } = await import('../db/index.js');
     const db = getDb();
     
-    // 현재 지역의 출현 포켓몬 조회
-    const encounters = db.prepare(`
-      SELECT e.pokemon_id, e.min_level, e.max_level
-      FROM encounters e
-      WHERE e.location_area_id = ?
-    `).all(String(this.currentLocationAreaId)) as any[];
-
+    const isArea = this.currentLocationId.startsWith('area_');
+    const idNum = this.currentLocationId.replace(/[^0-9]/g, '');
+    let encounters: any[] = [];
+    
     let targetId = Math.floor(Math.random() * 151) + 1; // Default
     let targetLevel = 5;
+
+    // 공식 API 야생 포켓몬 연동: 지역 기준으로 출현 포켓몬 찾기 API 호출 (실시간 연동)
+    try {
+      let areasToFetch: string[] = [];
+      if (isArea) {
+        areasToFetch = [`https://pokeapi.co/api/v2/location-area/${idNum}/`];
+      } else {
+        const locRes = await fetch(`https://pokeapi.co/api/v2/location/${idNum}/`);
+        if (locRes.ok) {
+          const locData = await locRes.json();
+          if (locData.areas && locData.areas.length > 0) {
+            areasToFetch = locData.areas.map((a: any) => a.url);
+          }
+        }
+      }
+      
+      for (const areaUrl of areasToFetch) {
+        const response = await fetch(areaUrl);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pokemon_encounters && data.pokemon_encounters.length > 0) {
+            const areaEncounters = data.pokemon_encounters.map((pe: any) => {
+              const urlParts = pe.pokemon.url.split('/');
+              const pId = urlParts[urlParts.length - 2];
+              
+              // 어떤 버전에서 출연하는지 체크 (가장 최신 버전을 기준으로 함)
+              const versionDetails = pe.version_details[pe.version_details.length - 1];
+              const encounterDetails = versionDetails.encounter_details[0];
+              
+              return {
+                pokemon_id: pId,
+                min_level: encounterDetails?.min_level || 5,
+                max_level: encounterDetails?.max_level || 5
+              };
+            });
+            encounters = encounters.concat(areaEncounters);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch from pokeapi:", err);
+    }
 
     if (encounters && encounters.length > 0) {
       const randomEncounter = encounters[Math.floor(Math.random() * encounters.length)];
@@ -108,6 +162,26 @@ export class GameEngine {
       const minLvl = parseInt(randomEncounter.min_level, 10);
       const maxLvl = parseInt(randomEncounter.max_level, 10);
       targetLevel = Math.floor(Math.random() * (maxLvl - minLvl + 1)) + minLvl;
+    } else {
+      // Fallback for regions without encounter data at all (e.g. some gen 9)
+      let locationInfo;
+      if (isArea) {
+         locationInfo = db.prepare(`SELECT region_id FROM locations l JOIN location_areas a ON l.id = a.location_id WHERE a.id = ?`).get(idNum) as any;
+      } else {
+         locationInfo = db.prepare(`SELECT region_id FROM locations l WHERE l.id = ?`).get(idNum) as any;
+      }
+  
+      if (locationInfo) {
+         const regionNum = parseInt(locationInfo.region_id, 10);
+         if (regionNum === 2) targetId = Math.floor(Math.random() * 100) + 152; // Johto
+         else if (regionNum === 3) targetId = Math.floor(Math.random() * 135) + 252; // Hoenn
+         else if (regionNum === 4) targetId = Math.floor(Math.random() * 107) + 387; // Sinnoh
+         else if (regionNum === 5) targetId = Math.floor(Math.random() * 156) + 494; // Unova
+         else if (regionNum === 6) targetId = Math.floor(Math.random() * 72) + 650; // Kalos
+         else if (regionNum === 7) targetId = Math.floor(Math.random() * 88) + 722; // Alola
+         else if (regionNum === 8) targetId = Math.floor(Math.random() * 89) + 810; // Galar
+         else if (regionNum === 10) targetId = Math.floor(Math.random() * 105) + 906; // Paldea
+      }
     }
 
     const enemyUri = await this.ontology.loadPokemon(targetId, 'enemy');
@@ -424,18 +498,36 @@ export class GameEngine {
        } else {
          const targetLocationAreaId = payload?.locationAreaId;
          if (targetLocationAreaId) {
-             this.currentLocationAreaId = parseInt(targetLocationAreaId, 10);
-             const { getDb } = await import('../db/index');
+             
+             this.currentLocationId = String(targetLocationAreaId);
+             const isArea = this.currentLocationId.startsWith('area_');
+             const idNum = this.currentLocationId.replace(/[^0-9]/g, '');
+             const { getDb } = await import('../db/index.js');
              const db = getDb();
-             const loc = db.prepare(`
-                SELECT ln.name, l.identifier 
-                FROM location_areas a 
-                JOIN locations l ON a.location_id = l.id 
-                LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
-                WHERE a.id = ?
-              `).get(String(this.currentLocationAreaId)) as any;
+             let loc;
+             if (isArea) {
+               loc = db.prepare(`
+                  SELECT ln.name, l.identifier 
+                  FROM location_areas a 
+                  JOIN locations l ON a.location_id = l.id 
+                  LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+                  WHERE a.id = ?
+                `).get(idNum) as any;
+             } else {
+               loc = db.prepare(`
+                  SELECT ln.name, l.identifier 
+                  FROM locations l 
+                  LEFT JOIN location_names ln ON l.id = ln.location_id AND ln.local_language_id = 9
+                  WHERE l.id = ?
+                `).get(idNum) as any;
+             }
+  
               
-             const locName = loc ? (loc.name || loc.identifier) : '알 수 없는 장소';
+             
+             const { translateLocationName } = await import('../translations.js');
+             const locNameRaw = loc ? (loc.name || loc.identifier) : '알 수 없는 장소';
+             const locName = translateLocationName(locNameRaw);
+
              this.log(`${locName}(으)로 이동했습니다.`);
          }
        }
@@ -501,7 +593,7 @@ export class GameEngine {
     
     this.store.add(playerUri, "rdf:type", "poke:Pokemon"); 
     this.store.add(playerUri, "poke:species", "poke:species_human");
-    this.store.add(playerUri, "poke:name", "주인공(인간)");
+    this.store.add(playerUri, "poke:name", "오박사");
     this.store.add(playerUri, "poke:maxHP", "120");
     this.store.add(playerUri, "poke:currentHP", "120");
     this.store.add(playerUri, "poke:attack", "20");

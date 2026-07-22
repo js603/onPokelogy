@@ -107,6 +107,7 @@ export default function App() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
+  const [selectedRegion, setSelectedRegion] = useState(1);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
@@ -198,9 +199,9 @@ export default function App() {
     }
   };
 
-  const fetchLocations = async () => {
+  const fetchLocations = async (regionId = selectedRegion) => {
     try {
-      const res = await fetch('/api/locations');
+      const res = await fetch(`/api/locations?regionId=${regionId}`);
       const data = await res.json();
       setLocations(data);
     } catch (e) {
@@ -372,7 +373,14 @@ export default function App() {
                 <div className="win98-dropdown-item text-gray-500" onClick={(e) => e.stopPropagation()}>저장(S)</div>
                 <div className="win98-dropdown-item text-gray-500" onClick={(e) => e.stopPropagation()}>불러오기(O)</div>
                 <div className="h-px bg-gray-500 my-1 mx-1 border-b border-white"></div>
-                <div className="win98-dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveMenu(null); }}>끝내기(X)</div>
+                <div className="win98-dropdown-item" onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActiveMenu(null); 
+                  setGameState(null);
+                  setTypingLog(null);
+                  setLogQueue([]);
+                  setVisibleLogs([]);
+                }}>끝내기(X)</div>
               </div>
             )}
           </div>
@@ -615,7 +623,25 @@ export default function App() {
              <div className="p-2 bg-[#c0c0c0] flex-1 flex flex-col min-h-0 border-l border-white border-t border-white border-r border-black border-b border-black">
                 <div className="flex gap-2 mb-2 items-center">
                   <span className="text-sm px-1">위치(L):</span>
-                  <div className="win98-inset bg-white flex-1 p-1 px-2 text-sm text-black">관동지방 (Kanto Region)</div>
+                  <select 
+                    className="win98-inset bg-white flex-1 p-1 px-2 text-sm text-black focus:outline-none"
+                    value={selectedRegion}
+                    onChange={(e) => {
+                      const newRegionId = parseInt(e.target.value);
+                      setSelectedRegion(newRegionId);
+                      fetchLocations(newRegionId);
+                    }}
+                  >
+                    <option value={1}>1세대: 관동지방 (Kanto)</option>
+                    <option value={2}>2세대: 성도지방 (Johto)</option>
+                    <option value={3}>3세대: 호연지방 (Hoenn)</option>
+                    <option value={4}>4세대: 신오지방 (Sinnoh)</option>
+                    <option value={5}>5세대: 하나지방 (Unova)</option>
+                    <option value={6}>6세대: 칼로스지방 (Kalos)</option>
+                    <option value={7}>7세대: 알로라지방 (Alola)</option>
+                    <option value={8}>8세대: 가라르지방 (Galar)</option>
+                    <option value={10}>9세대: 팔데아지방 (Paldea)</option>
+                  </select>
                 </div>
                 <div className="win98-inset bg-white flex-1 relative overflow-auto p-1">
                   <table className="w-full text-sm text-left border-collapse">
