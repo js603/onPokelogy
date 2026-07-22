@@ -103,6 +103,7 @@ export class GameEngine {
   }
   
 
+
   async spawnWildPokemon() {
     const { getDb } = await import('../db/index.js');
     const db = getDb();
@@ -111,10 +112,30 @@ export class GameEngine {
     const idNum = this.currentLocationId.replace(/[^0-9]/g, '');
     let encounters: any[] = [];
     
+    let locationInfo;
+    if (isArea) {
+       locationInfo = db.prepare(`SELECT region_id FROM locations l JOIN location_areas a ON l.id = a.location_id WHERE a.id = ?`).get(idNum) as any;
+    } else {
+       locationInfo = db.prepare(`SELECT region_id FROM locations l WHERE l.id = ?`).get(idNum) as any;
+    }
+    const regionId = locationInfo ? parseInt(locationInfo.region_id, 10) : 1;
+
+    const validVersionsByRegion: Record<number, string[]> = {
+      1: ['red', 'blue', 'yellow', 'firered', 'leafgreen', 'lets-go-pikachu', 'lets-go-eevee'],
+      2: ['gold', 'silver', 'crystal', 'heartgold', 'soulsilver'],
+      3: ['ruby', 'sapphire', 'emerald', 'omega-ruby', 'alpha-sapphire'],
+      4: ['diamond', 'pearl', 'platinum', 'brilliant-diamond', 'shining-pearl'],
+      5: ['black', 'white', 'black-2', 'white-2'],
+      6: ['x', 'y'],
+      7: ['sun', 'moon', 'ultra-sun', 'ultra-moon'],
+      8: ['sword', 'shield'],
+      10: ['scarlet', 'violet']
+    };
+    const validVersions = validVersionsByRegion[regionId] || [];
+    
     let targetId = Math.floor(Math.random() * 151) + 1; // Default
     let targetLevel = 5;
 
-    // 공식 API 야생 포켓몬 연동: 지역 기준으로 출현 포켓몬 찾기 API 호출 (실시간 연동)
     try {
       let areasToFetch: string[] = [];
       if (isArea) {
@@ -138,8 +159,13 @@ export class GameEngine {
               const urlParts = pe.pokemon.url.split('/');
               const pId = urlParts[urlParts.length - 2];
               
-              // 어떤 버전에서 출연하는지 체크 (가장 최신 버전을 기준으로 함)
-              const versionDetails = pe.version_details[pe.version_details.length - 1];
+              let validDetails = pe.version_details;
+              if (validVersions.length > 0) {
+                validDetails = pe.version_details.filter((vd: any) => validVersions.includes(vd.version.name));
+              }
+              if (validDetails.length === 0) return null;
+
+              const versionDetails = validDetails[validDetails.length - 1];
               const encounterDetails = versionDetails.encounter_details[0];
               
               return {
@@ -147,7 +173,7 @@ export class GameEngine {
                 min_level: encounterDetails?.min_level || 5,
                 max_level: encounterDetails?.max_level || 5
               };
-            });
+            }).filter(Boolean);
             encounters = encounters.concat(areaEncounters);
           }
         }
@@ -156,6 +182,7 @@ export class GameEngine {
       console.error("Failed to fetch from pokeapi:", err);
     }
 
+    console.log("Encounters length:", encounters.length);
     if (encounters && encounters.length > 0) {
       const randomEncounter = encounters[Math.floor(Math.random() * encounters.length)];
       targetId = parseInt(randomEncounter.pokemon_id, 10);
@@ -163,27 +190,17 @@ export class GameEngine {
       const maxLvl = parseInt(randomEncounter.max_level, 10);
       targetLevel = Math.floor(Math.random() * (maxLvl - minLvl + 1)) + minLvl;
     } else {
-      // Fallback for regions without encounter data at all (e.g. some gen 9)
-      let locationInfo;
-      if (isArea) {
-         locationInfo = db.prepare(`SELECT region_id FROM locations l JOIN location_areas a ON l.id = a.location_id WHERE a.id = ?`).get(idNum) as any;
-      } else {
-         locationInfo = db.prepare(`SELECT region_id FROM locations l WHERE l.id = ?`).get(idNum) as any;
-      }
-  
-      if (locationInfo) {
-         const regionNum = parseInt(locationInfo.region_id, 10);
-         if (regionNum === 2) targetId = Math.floor(Math.random() * 100) + 152; // Johto
-         else if (regionNum === 3) targetId = Math.floor(Math.random() * 135) + 252; // Hoenn
-         else if (regionNum === 4) targetId = Math.floor(Math.random() * 107) + 387; // Sinnoh
-         else if (regionNum === 5) targetId = Math.floor(Math.random() * 156) + 494; // Unova
-         else if (regionNum === 6) targetId = Math.floor(Math.random() * 72) + 650; // Kalos
-         else if (regionNum === 7) targetId = Math.floor(Math.random() * 88) + 722; // Alola
-         else if (regionNum === 8) targetId = Math.floor(Math.random() * 89) + 810; // Galar
-         else if (regionNum === 10) targetId = Math.floor(Math.random() * 105) + 906; // Paldea
+      if (regionId) {
+         if (regionId === 2) targetId = Math.floor(Math.random() * 100) + 152; // Johto
+         else if (regionId === 3) targetId = Math.floor(Math.random() * 135) + 252; // Hoenn
+         else if (regionId === 4) targetId = Math.floor(Math.random() * 107) + 387; // Sinnoh
+         else if (regionId === 5) targetId = Math.floor(Math.random() * 156) + 494; // Unova
+         else if (regionId === 6) targetId = Math.floor(Math.random() * 72) + 650; // Kalos
+         else if (regionId === 7) targetId = Math.floor(Math.random() * 88) + 722; // Alola
+         else if (regionId === 8) targetId = Math.floor(Math.random() * 89) + 810; // Galar
+         else if (regionId === 10) targetId = Math.floor(Math.random() * 105) + 906; // Paldea
       }
     }
-
     const enemyUri = await this.ontology.loadPokemon(targetId, 'enemy');
     
     // 레벨 적용
