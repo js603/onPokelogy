@@ -1,3 +1,4 @@
+import { migrateEncounters } from "./migrateEncounters";
 import path from 'path';
 import axios from 'axios';
 import Database from 'better-sqlite3';
@@ -67,5 +68,11 @@ export async function initializeDatabase() {
       console.error(`[DB] Failed to process ${filename}:`, err);
     }
   }
+  try {
+    migrateEncounters(db);
+  } catch (err) {
+    console.error("[DB] Migration failed:", err);
+  }
+
   return db;
 }

@@ -1,3 +1,5 @@
+import { DataViewer } from './components/DataViewer';
+import { Pokedex } from './components/Pokedex';
 import { useEffect, useState, useRef } from 'react';
 import { Terminal, Database, Activity, Play, X, Minus, Square, User } from 'lucide-react';
 
@@ -27,43 +29,67 @@ const TypewriterText = ({ text, speed = 10, onComplete }: { text: string, speed?
 }
 
 const LogMessage = ({ log, gameState, isTyping, onTypingComplete }: { key?: any, log: string, gameState: any, isTyping?: boolean, onTypingComplete?: () => void }) => {
-  const isImportant = log.includes('레벨업') || log.includes('진화');
-  const isSystem = log.includes('시스템') || isImportant || log.includes('승리') || log.includes('잡았다') || log.includes('도망') || log.includes('나타났다') || log.includes('발견') || log.includes('휴식');
-  
+  let rawMessage = log;
   let speaker = '';
-  let message = log;
   let speakerColor = '';
 
-  if (!isSystem) {
-    if (log.includes('주인공')) {
+  const matchP = rawMessage.match(/^\[P\|(.*?)\]\s*(.*)/);
+  const matchE = rawMessage.match(/^\[E\|(.*?)\]\s*(.*)/);
+
+  if (matchP) {
+    speaker = matchP[1];
+    speakerColor = 'text-blue-600';
+    rawMessage = matchP[2];
+  } else if (matchE) {
+    speaker = matchE[1];
+    speakerColor = 'text-red-600';
+    rawMessage = matchE[2];
+  }
+
+  const isImportant = rawMessage.includes('레벨 업') || rawMessage.includes('진화');
+  const isSystem = rawMessage.includes('시스템') || isImportant || rawMessage.includes('승리') || rawMessage.includes('잡았다') || rawMessage.includes('도망') || rawMessage.includes('나타났다') || rawMessage.includes('발견') || rawMessage.includes('휴식');
+
+  if (speaker && !isSystem) {
+     rawMessage = rawMessage.replace(new RegExp(`^${speaker}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
+  } else if (isSystem) {
+     speaker = '';
+  }
+
+  // legacy logic for old logs
+  if (!speaker && !isSystem) {
+    if (rawMessage.includes('주인공')) {
       speaker = gameState.player?.name || '나';
       speakerColor = 'text-blue-600';
-      message = log.replace(/주인공\(.*?\)(이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
-    } else if (log.includes('적 ')) {
-      speaker = gameState.enemy?.name || '상대';
-      speakerColor = 'text-red-600';
-      message = log.replace(/적\s+[^\s(]+(\(.*?\))?(이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
-    } else if (gameState.player && log.startsWith(gameState.player.name)) {
+      rawMessage = rawMessage.replace(/주인공\(.*?\)(이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
+    } else if (rawMessage.startsWith('적 ')) {
+      const match = rawMessage.match(/^적\s+([^\s]+?)(?:이\(가\)|은\(는\)|은|는|의|이|가)?\s+(.*)/);
+      if (match) {
+         speaker = match[1];
+         speakerColor = 'text-red-600';
+         rawMessage = match[2];
+      } else {
+         speaker = gameState.enemy?.name || '상대';
+         speakerColor = 'text-red-600';
+         rawMessage = rawMessage.replace(/^적\s+[^\s]+(?:이\(가\)|은\(는\)|은|는|의|이|가)?\s*/, '');
+      }
+    } else if (gameState.player && rawMessage.startsWith(gameState.player.name)) {
       speaker = gameState.player.name;
       speakerColor = 'text-blue-600';
-      message = log.replace(new RegExp(`^${gameState.player.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
-    } else if (gameState.enemy && log.startsWith(gameState.enemy.name)) {
+      rawMessage = rawMessage.replace(new RegExp(`^${gameState.player.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
+    } else if (gameState.enemy && rawMessage.startsWith(gameState.enemy.name)) {
       speaker = gameState.enemy.name;
       speakerColor = 'text-red-600';
-      message = log.replace(new RegExp(`^${gameState.enemy.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
-    } else {
-      speaker = '시스템';
-      speakerColor = 'text-gray-600';
+      rawMessage = rawMessage.replace(new RegExp(`^${gameState.enemy.name}(이\\(가\\)|은\\(는\\)|은|는|의|이|가)?\\s*`), '');
     }
   }
 
-  const isMyMessage = speaker === gameState.player?.name || speaker === '나';
-
+  let message = rawMessage.replace(/^\[.*?\]\s*/, '');
+  const isMyMessage = speakerColor === 'text-blue-600';
   return (
     <div className={`mb-3 leading-snug flex flex-col ${isSystem ? 'items-center' : isMyMessage ? 'items-end' : 'items-start'} ${isImportant ? 'log-important' : ''}`}>
       {isSystem ? (
         <div className="text-gray-500 text-center italic text-[11px] py-1 border-y border-gray-100 my-1 bg-gray-50 w-full">
-          {isTyping ? <TypewriterText text={log} onComplete={onTypingComplete} speed={15} /> : <span>{log}</span>}
+          {isTyping ? <TypewriterText text={message} onComplete={onTypingComplete} speed={15} /> : <span>{message}</span>}
         </div>
       ) : (
         <div className={`max-w-[80%] flex flex-col ${isMyMessage ? 'items-end' : 'items-start'}`}>
@@ -97,6 +123,7 @@ export default function App() {
   const [showGraph, setShowGraph] = useState(false);
   const [graphData, setGraphData] = useState<any>(null);
   const [showSysInfo, setShowSysInfo] = useState(false);
+  const [showPokedex, setShowPokedex] = useState(false);
   const [isAutoBattling, setIsAutoBattling] = useState(false);
   const autoBattleRef = useRef(false);
   
@@ -400,11 +427,18 @@ export default function App() {
               <div className="absolute top-full left-0 mt-1 win98-dropdown shadow-md z-50">
                 <div className="win98-dropdown-item" onClick={(e) => {
                   e.stopPropagation();
+                  setShowPokedex(true);
+                  setActiveMenu(null);
+                }}>
+                  포켓몬 도감(P)
+                </div>
+                <div className="win98-dropdown-item" onClick={(e) => {
+                  e.stopPropagation();
                   setShowGraph(!showGraph);
                   if(!showGraph) fetchGraph();
                   setActiveMenu(null);
                 }}>
-                  데이터
+                  데이터(D)
                 </div>
               </div>
             )}
@@ -572,6 +606,7 @@ export default function App() {
         </div>
       </div>
 
+      {showPokedex && <Pokedex onClose={() => setShowPokedex(false)} />}
       {showSysInfo && (
         <div className="fixed inset-0 bg-black/50 z-50 p-8 flex items-center justify-center">
           <div className="win98-window w-80 flex flex-col">
@@ -602,11 +637,7 @@ export default function App() {
                <button onClick={() => setShowGraph(false)} className="bg-[#c0c0c0] text-black w-4 h-4 flex items-center justify-center border border-t-white border-l-white border-b-black border-r-black font-bold">X</button>
              </div>
              <div className="p-2 bg-[#c0c0c0]">
-                <div className="win98-inset p-2 h-[60vh] overflow-auto bg-white">
-                  <pre className="text-xs text-black font-mono">
-                    {JSON.stringify(graphData, null, 2)}
-                  </pre>
-                </div>
+                <DataViewer data={graphData} />
              </div>
           </div>
         </div>

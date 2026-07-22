@@ -53,6 +53,9 @@ export class PokeOntology {
     this.store.add(pkmnUri, `${POKE_PREFIX}currentHP`, stats['1'] || "10");
     this.store.add(pkmnUri, `${POKE_PREFIX}speed`, stats['6'] || "10");
     this.store.add(pkmnUri, `${POKE_PREFIX}attack`, stats['2'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}defense`, stats['3'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}spAtk`, stats['4'] || "10");
+    this.store.add(pkmnUri, `${POKE_PREFIX}spDef`, stats['5'] || "10");
     this.store.add(pkmnUri, `${POKE_PREFIX}weight`, data.weight?.toString() || "0");
     this.store.add(pkmnUri, `${POKE_PREFIX}height`, data.height?.toString() || "0");
     this.store.add(pkmnUri, `${POKE_PREFIX}baseExperience`, data.base_experience?.toString() || "0");
@@ -99,7 +102,7 @@ export class PokeOntology {
 
     // Moves (Fetch up to 4 random or initial moves for this pokemon from pokemon_moves)
     const moves = db.prepare(`
-      SELECT m.id, m.identifier, mn.name, m.type_id, m.power
+      SELECT m.id, m.identifier, mn.name, m.type_id, m.power, m.damage_class_id
       FROM pokemon_moves pm
       JOIN moves m ON pm.move_id = m.id
       LEFT JOIN move_names mn ON m.id = mn.move_id AND mn.local_language_id = 3
@@ -114,6 +117,7 @@ export class PokeOntology {
       this.store.add(moveUri, "rdf:type", `${POKE_PREFIX}Move`);
       this.store.add(moveUri, `${POKE_PREFIX}name`, move.name || move.identifier);
       this.store.add(moveUri, `${POKE_PREFIX}power`, (move.power || 40).toString());
+      this.store.add(moveUri, `${POKE_PREFIX}damageClass`, (move.damage_class_id || 2).toString());
       
       const moveTypeQuery = db.prepare(`SELECT name FROM type_names WHERE type_id = ? AND local_language_id = 3`).get(move.type_id) as any;
       const moveTypeStr = moveTypeQuery ? moveTypeQuery.name : move.type_id;
@@ -130,6 +134,7 @@ export class PokeOntology {
       this.store.add(moveUri, "rdf:type", `${POKE_PREFIX}Move`);
       this.store.add(moveUri, `${POKE_PREFIX}name`, "몸통박치기");
       this.store.add(moveUri, `${POKE_PREFIX}power`, "40");
+      this.store.add(moveUri, `${POKE_PREFIX}damageClass`, "2");
       this.store.add(moveUri, `${POKE_PREFIX}hasType`, `${POKE_PREFIX}type_노말`);
       await this.loadTypeRelations('노말', '1'); // 1 is normal
       this.store.add(pkmnUri, `${POKE_PREFIX}knowsMove`, moveUri);

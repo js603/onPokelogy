@@ -109,7 +109,6 @@ export const translateMap: Record<string, string> = {
       'Roaming Paldea': '팔데아 배회', 'paldea-pokemart': '팔데아 프렌들리숍', 'paldea-pokecenter': '팔데아 포켓몬센터',
       'hoenn-pokemart': '호연 프렌들리숍', 'hoenn-pokecenter': '호연 포켓몬센터',
       'Mystery Zone': '의문의 공간', 'Faraway place': '머나먼 곳', '???': '???',
-      'Pokémon League': '포켓몬리그',
 
 
       

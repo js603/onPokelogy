@@ -32,28 +32,53 @@ export class GameEngine {
     this.store.add(playerUri, "rdf:type", "poke:Pokemon"); 
     this.store.add(playerUri, "poke:species", "poke:species_human");
     this.store.add(playerUri, "poke:name", "오박사");
-    this.store.add(playerUri, "poke:maxHP", "120");
-    this.store.add(playerUri, "poke:currentHP", "120");
-    this.store.add(playerUri, "poke:attack", "20");
+    this.store.add(playerUri, "poke:maxHP", "150");
+    this.store.add(playerUri, "poke:currentHP", "150");
+    this.store.add(playerUri, "poke:attack", "45");
+    this.store.add(playerUri, "poke:defense", "40");
+    this.store.add(playerUri, "poke:spAtk", "30");
+    this.store.add(playerUri, "poke:spDef", "40");
     this.store.add(playerUri, "poke:level", "1");
     this.store.add(playerUri, "poke:experience", "0");
+    
     this.store.add(playerUri, "poke:weight", "65");
     this.store.add(playerUri, "poke:height", "1.75");
     this.store.add(playerUri, "poke:baseExperience", "0");
 
-    this.store.add("poke:type_human", "rdf:type", "poke:Type");
-    this.store.add("poke:type_human", "poke:name", "인간");
-    this.store.add(playerUri, "poke:hasType", "poke:type_human");
+    await this.ontology.loadTypeRelations("격투", "2");
+    this.store.add(playerUri, "poke:hasType", "poke:type_격투");
 
     this.store.add("poke:ability_human", "rdf:type", "poke:Ability");
-    this.store.add("poke:ability_human", "poke:name", "도구 사용");
+    this.store.add("poke:ability_human", "poke:name", "종합격투기");
     this.store.add(playerUri, "poke:hasAbility", "poke:ability_human");
 
     this.store.add("poke:move_punch", "rdf:type", "poke:Move");
-    this.store.add("poke:move_punch", "poke:name", "맨손 공격");
-    this.store.add("poke:move_punch", "poke:power", "20");
-    this.store.add("poke:move_punch", "poke:hasType", "poke:type_human");
+    this.store.add("poke:move_punch", "poke:name", "원투 펀치");
+    this.store.add("poke:move_punch", "poke:power", "40");
+    this.store.add("poke:move_punch", "poke:damageClass", "2");
+    this.store.add("poke:move_punch", "poke:hasType", "poke:type_격투");
     this.store.add(playerUri, "poke:knowsMove", "poke:move_punch");
+
+    this.store.add("poke:move_highkick", "rdf:type", "poke:Move");
+    this.store.add("poke:move_highkick", "poke:name", "하이킥");
+    this.store.add("poke:move_highkick", "poke:power", "65");
+    this.store.add("poke:move_highkick", "poke:damageClass", "2");
+    this.store.add("poke:move_highkick", "poke:hasType", "poke:type_격투");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_highkick");
+
+    this.store.add("poke:move_takedown", "rdf:type", "poke:Move");
+    this.store.add("poke:move_takedown", "poke:name", "테이크다운");
+    this.store.add("poke:move_takedown", "poke:power", "50");
+    this.store.add("poke:move_takedown", "poke:damageClass", "2");
+    this.store.add("poke:move_takedown", "poke:hasType", "poke:type_격투");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_takedown");
+
+    this.store.add("poke:move_rnc", "rdf:type", "poke:Move");
+    this.store.add("poke:move_rnc", "poke:name", "리어네이키드초크");
+    this.store.add("poke:move_rnc", "poke:power", "80");
+    this.store.add("poke:move_rnc", "poke:damageClass", "2");
+    this.store.add("poke:move_rnc", "poke:hasType", "poke:type_격투");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_rnc");
 
     // 인간 스프라이트
     this.store.add(playerUri, "poke:spriteBack", "https://play.pokemonshowdown.com/sprites/trainers/oak.png"); 
@@ -120,66 +145,17 @@ export class GameEngine {
     }
     const regionId = locationInfo ? parseInt(locationInfo.region_id, 10) : 1;
 
-    const validVersionsByRegion: Record<number, string[]> = {
-      1: ['red', 'blue', 'yellow', 'firered', 'leafgreen', 'lets-go-pikachu', 'lets-go-eevee'],
-      2: ['gold', 'silver', 'crystal', 'heartgold', 'soulsilver'],
-      3: ['ruby', 'sapphire', 'emerald', 'omega-ruby', 'alpha-sapphire'],
-      4: ['diamond', 'pearl', 'platinum', 'brilliant-diamond', 'shining-pearl'],
-      5: ['black', 'white', 'black-2', 'white-2'],
-      6: ['x', 'y'],
-      7: ['sun', 'moon', 'ultra-sun', 'ultra-moon'],
-      8: ['sword', 'shield'],
-      10: ['scarlet', 'violet']
-    };
-    const validVersions = validVersionsByRegion[regionId] || [];
-    
     let targetId = Math.floor(Math.random() * 151) + 1; // Default
     let targetLevel = 5;
 
     try {
-      let areasToFetch: string[] = [];
       if (isArea) {
-        areasToFetch = [`https://pokeapi.co/api/v2/location-area/${idNum}/`];
+        encounters = db.prepare(`SELECT pokemon_id, min_level, max_level FROM valid_encounters WHERE location_area_id = ?`).all(idNum) as any[];
       } else {
-        const locRes = await fetch(`https://pokeapi.co/api/v2/location/${idNum}/`);
-        if (locRes.ok) {
-          const locData = await locRes.json();
-          if (locData.areas && locData.areas.length > 0) {
-            areasToFetch = locData.areas.map((a: any) => a.url);
-          }
-        }
-      }
-      
-      for (const areaUrl of areasToFetch) {
-        const response = await fetch(areaUrl);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pokemon_encounters && data.pokemon_encounters.length > 0) {
-            const areaEncounters = data.pokemon_encounters.map((pe: any) => {
-              const urlParts = pe.pokemon.url.split('/');
-              const pId = urlParts[urlParts.length - 2];
-              
-              let validDetails = pe.version_details;
-              if (validVersions.length > 0) {
-                validDetails = pe.version_details.filter((vd: any) => validVersions.includes(vd.version.name));
-              }
-              if (validDetails.length === 0) return null;
-
-              const versionDetails = validDetails[validDetails.length - 1];
-              const encounterDetails = versionDetails.encounter_details[0];
-              
-              return {
-                pokemon_id: pId,
-                min_level: encounterDetails?.min_level || 5,
-                max_level: encounterDetails?.max_level || 5
-              };
-            }).filter(Boolean);
-            encounters = encounters.concat(areaEncounters);
-          }
-        }
+        encounters = db.prepare(`SELECT pokemon_id, min_level, max_level FROM valid_encounters WHERE location_id = ?`).all(idNum) as any[];
       }
     } catch (err) {
-      console.error("Failed to fetch from pokeapi:", err);
+      console.error("Failed to fetch from valid_encounters:", err);
     }
 
     console.log("Encounters length:", encounters.length);
@@ -213,6 +189,7 @@ export class GameEngine {
     const enemyName = this.store.getValue(enemyUri, "poke:name");
     
     this.log(`앗! 야생의 ${enemyName} (Lv.${targetLevel})이(가) 나타났다!`);
+    this.store.add("poke:player_pokemon", "poke:hasEncountered", targetId.toString());
   }
 
   async evolvePokemon(playerUri: string, nextSpeciesName: string) {
@@ -225,12 +202,12 @@ export class GameEngine {
     await this.ontology.loadPokemon(nextSpeciesName, 'player');
     
     const rawName = this.store.getValue(playerUri, "poke:name") || "";
-    const newName = `주인공(${rawName})`;
+    const newName = rawName;
     this.store.update(playerUri, "poke:name", newName);
     
     const newSprite = this.store.getValue(playerUri, "poke:spriteFront") || "";
 
-    this.log(`축하합니다! ${oldName}은(는) ${newName}(으)로 진화했습니다!`);
+    this.log(`[P|${oldName}] 축하합니다! ${oldName}은(는) ${newName}(으)로 진화했습니다!`);
     
     if (currentExp) this.store.update(playerUri, "poke:experience", currentExp);
     if (currentLevel) {
@@ -249,45 +226,54 @@ export class GameEngine {
 
   calculateDamage(attackerUri: string, defenderUri: string, moveUri: string): { damage: number, effectiveness: string } {
     const movePower = parseInt(this.store.getValue(moveUri, "poke:power") || "0", 10);
-    const attackerAtk = parseInt(this.store.getValue(attackerUri, "poke:attack") || "10", 10);
+    const damageClass = parseInt(this.store.getValue(moveUri, "poke:damageClass") || "2", 10);
+    
+    const isSpecial = damageClass === 3;
+    const attackerAtk = parseInt(this.store.getValue(attackerUri, isSpecial ? "poke:spAtk" : "poke:attack") || "10", 10);
+    const defenderDef = parseInt(this.store.getValue(defenderUri, isSpecial ? "poke:spDef" : "poke:defense") || "10", 10);
+    
+    const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
+    const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
+    const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
     
     let multiplier = 1;
     let effectText = "";
-    
-    // Semantic queries for effectiveness
-    // Is move super effective against defender? 
-    // We already inferred this in TripleStore.infer()!
-    if (this.store.query(moveUri, "poke:isSuperEffectiveAgainst", defenderUri).length > 0) {
-      multiplier *= 2;
-      const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
-      const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
-      const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
-      let weakTypeNames = [];
-      for (const t of defenderTypes) {
-         if (this.store.query(moveTypeUri, "poke:doubleDamageTo", t).length > 0) {
-            weakTypeNames.push(this.store.getValue(t, "poke:name") || t.replace("poke:type_", ""));
-         }
+
+    if (moveTypeUri && moveTypeUri !== "poke:type_human") {
+      let weakTypes: string[] = [];
+      let resistTypes: string[] = [];
+      let immuneTypes: string[] = [];
+
+      for (const dType of defenderTypes) {
+        if (this.store.query(moveTypeUri, "poke:doubleDamageTo", dType).length > 0) {
+          multiplier *= 2;
+          weakTypes.push(this.store.getValue(dType, "poke:name") || dType.replace("poke:type_", ""));
+        } else if (this.store.query(moveTypeUri, "poke:halfDamageTo", dType).length > 0) {
+          multiplier *= 0.5;
+          resistTypes.push(this.store.getValue(dType, "poke:name") || dType.replace("poke:type_", ""));
+        } else if (this.store.query(moveTypeUri, "poke:noDamageTo", dType).length > 0) {
+          multiplier *= 0;
+          immuneTypes.push(this.store.getValue(dType, "poke:name") || dType.replace("poke:type_", ""));
+        }
       }
-      effectText = `${moveTypeName} 기술은 ${weakTypeNames.join(', ')} 타입에게 효과가 굉장했다!`;
-    } else if (this.store.query(moveUri, "poke:isNotVeryEffectiveAgainst", defenderUri).length > 0) {
-      multiplier *= 0.5;
-      const moveTypeUri = this.store.getValue(moveUri, "poke:hasType") || "";
-      const moveTypeName = this.store.getValue(moveTypeUri, "poke:name") || moveTypeUri.replace("poke:type_", "");
-      const defenderTypes = this.store.query(defenderUri, "poke:hasType", null).map(t => t[2]);
-      let resistTypeNames = [];
-      for (const t of defenderTypes) {
-         if (this.store.query(moveTypeUri, "poke:halfDamageTo", t).length > 0) {
-            resistTypeNames.push(this.store.getValue(t, "poke:name") || t.replace("poke:type_", ""));
-         }
+
+      if (multiplier > 1) {
+         effectText = `${moveTypeName} 기술은 효과가 굉장했다!`;
+      } else if (multiplier < 1 && multiplier > 0) {
+         effectText = `${moveTypeName} 기술은 효과가 별로인 것 같다...`;
+      } else if (multiplier === 0) {
+         effectText = `상대의 타입에 의해 기술의 효과가 완벽히 상쇄되었다.`;
       }
-      effectText = `${moveTypeName} 기술은 ${resistTypeNames.join(', ')} 타입에게 효과가 별로인 것 같다...`;
-    } else if (this.store.query(moveUri, "poke:hasNoEffectOn", defenderUri).length > 0) {
-      multiplier *= 0;
-      effectText = `상대의 타입에 의해 기술의 효과가 완벽히 상쇄되었다.`;
     }
 
-    // Simplified damage formula
-    const damage = Math.floor(((2 * 5 / 5 + 2) * movePower * (attackerAtk / 50) / 50 + 2) * multiplier);
+    const attackerLevel = parseInt(this.store.getValue(attackerUri, "poke:level") || "5", 10);
+    
+    // Status moves deal 0 direct damage
+    if (damageClass === 1 || movePower === 0) {
+      return { damage: 0, effectiveness: effectText || "아무 일도 일어나지 않았다!" };
+    }
+
+    const damage = Math.floor((((2 * attackerLevel / 5 + 2) * movePower * (attackerAtk / defenderDef)) / 50 + 2) * multiplier);
     
     return { damage: Math.max(1, damage), effectiveness: effectText };
   }
@@ -399,7 +385,7 @@ export class GameEngine {
                 this.store.remove(playerUri, null, null); 
                 await this.ontology.loadPokemon(speciesName, 'player'); 
                 const rawName = this.store.getValue(playerUri, "poke:name");
-                const newName = `주인공(${rawName})`;
+                const newName = rawName;
                 this.store.update(playerUri, "poke:name", newName);
                 
                 this.log(`[시스템] 주인공이 ${newName}(으)로 변신했습니다.`);
@@ -424,16 +410,16 @@ export class GameEngine {
     if (actionType === 'ATTACK') {
       const moveUri = payload.moveUri;
       const moveName = this.store.getValue(moveUri, "poke:name");
-      this.log(`${playerName}의 ${moveName}!`);
+      this.log(`[P|${playerName}] ${playerName}의 ${moveName}!`);
       
       const { damage, effectiveness } = this.calculateDamage(playerUri, enemyUri, moveUri);
       if (effectiveness) this.log(effectiveness);
       
       const eHp = this.applyDamage(enemyUri, damage);
-      this.log(`${enemyName}은(는) ${damage}의 피해를 입었다.`);
+      if (damage > 0) this.log(`[E|${enemyName}] ${enemyName}은(는) ${damage}의 피해를 입었다.`);
       
       if (eHp <= 0) {
-        this.log(`${enemyName}은(는) 쓰러졌다! 승리했습니다!`);
+        this.log(`[E|${enemyName}] ${enemyName}은(는) 쓰러졌다! 승리했습니다!`);
         
         // Exp calculation
         const baseExpStr = this.store.getValue(enemyUri, "poke:baseExperience") || "50";
@@ -442,7 +428,7 @@ export class GameEngine {
         const enemyLevel = parseInt(enemyLevelStr, 10);
         
         const gainedExp = Math.floor((baseExp * enemyLevel) / 7);
-        this.log(`${playerName}은(는) ${gainedExp}의 경험치를 얻었다!`);
+        this.log(`[P|${playerName}] ${playerName}은(는) ${gainedExp}의 경험치를 얻었다!`);
         
         let currentExp = parseInt(this.store.getValue(playerUri, "poke:experience") || "0", 10);
         let currentLevel = parseInt(this.store.getValue(playerUri, "poke:level") || "5", 10);
@@ -453,7 +439,7 @@ export class GameEngine {
         const newLevel = 5 + Math.floor(currentExp / 50);
         if (newLevel > currentLevel) {
            this.store.update(playerUri, "poke:level", newLevel.toString());
-           this.log(`[레벨 업] ${playerName}은(는) 레벨 ${newLevel}(으)로 올랐다!`);
+           this.log(`[P|${playerName}] [레벨 업] ${playerName}은(는) 레벨 ${newLevel}(으)로 올랐다!`);
            
            const hp = parseInt(this.store.getValue(playerUri, "poke:maxHP") || "20", 10) + 5;
            this.store.update(playerUri, "poke:maxHP", hp.toString());
@@ -467,8 +453,8 @@ export class GameEngine {
         const readyToEvolve = this.store.getValue(playerUri, "poke:readyToEvolveTo");
         if (readyToEvolve) {
           const nextSpeciesName = readyToEvolve.replace("poke:species_", "");
-          this.log(`앗! ${playerName}의 상태가...!`);
-          this.log(`${playerName}은(는) 진화하려고 한다!`);
+          this.log(`[P|${playerName}] 앗! ${playerName}의 상태가...!`);
+          this.log(`[P|${playerName}] ${playerName}은(는) 진화하려고 한다!`);
           await this.evolvePokemon(playerUri, nextSpeciesName);
         }
         
@@ -562,15 +548,15 @@ export class GameEngine {
     const moveUri = moves[Math.floor(Math.random() * moves.length)][2];
     const moveName = this.store.getValue(moveUri, "poke:name");
     
-    this.log(`적 ${enemyName}의 ${moveName}!`);
+    this.log(`[E|${enemyName}] ${enemyName}의 ${moveName}!`);
     const { damage, effectiveness } = this.calculateDamage(enemyUri, playerUri, moveUri);
     if (effectiveness) this.log(effectiveness);
     
     const pHp = this.applyDamage(playerUri, damage);
-    this.log(`${playerName}은(는) ${damage}의 피해를 입었다.`);
+    if (damage > 0) this.log(`[P|${playerName}] ${playerName}은(는) ${damage}의 피해를 입었다.`);
     
     if (pHp <= 0) {
-      this.log(`${playerName}은(는) 쓰러졌다... 눈앞이 깜깜해졌다!`);
+      this.log(`[P|${playerName}] ${playerName}은(는) 쓰러졌다... 눈앞이 깜깜해졌다!`);
       const isHuman = this.store.query(playerUri, "poke:species", "poke:species_human").length > 0;
       
       if (isHuman) {
@@ -611,17 +597,23 @@ export class GameEngine {
     this.store.add(playerUri, "rdf:type", "poke:Pokemon"); 
     this.store.add(playerUri, "poke:species", "poke:species_human");
     this.store.add(playerUri, "poke:name", "오박사");
-    this.store.add(playerUri, "poke:maxHP", "120");
-    this.store.add(playerUri, "poke:currentHP", "120");
-    this.store.add(playerUri, "poke:attack", "20");
+    this.store.add(playerUri, "poke:maxHP", "150");
+    this.store.add(playerUri, "poke:currentHP", "150");
+    this.store.add(playerUri, "poke:attack", "45");
+    this.store.add(playerUri, "poke:defense", "40");
+    this.store.add(playerUri, "poke:spAtk", "30");
+    this.store.add(playerUri, "poke:spDef", "40");
     this.store.add(playerUri, "poke:level", "1");
     this.store.add(playerUri, "poke:experience", "0");
     this.store.add(playerUri, "poke:weight", "65");
     this.store.add(playerUri, "poke:height", "1.75");
     this.store.add(playerUri, "poke:baseExperience", "0");
-    this.store.add(playerUri, "poke:hasType", "poke:type_human");
+    this.store.add(playerUri, "poke:hasType", "poke:type_격투");
     this.store.add(playerUri, "poke:hasAbility", "poke:ability_human");
     this.store.add(playerUri, "poke:knowsMove", "poke:move_punch");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_highkick");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_takedown");
+    this.store.add(playerUri, "poke:knowsMove", "poke:move_rnc");
     this.store.add(playerUri, "poke:spriteBack", "https://play.pokemonshowdown.com/sprites/trainers/oak.png"); 
     
     this.store.infer();

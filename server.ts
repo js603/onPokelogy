@@ -4,6 +4,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GameEngine } from './src/engine/GameEngine';
 import { initializeDatabase } from './src/db/init';
+import { getDb } from './src/db/index';
 
 const app = express();
 const PORT = 3000;
@@ -199,6 +200,32 @@ app.get('/api/locations', async (req, res) => {
 });
 
 // 4. View Knowledge Graph (JSON-LD)
+app.get('/api/pokedex', (req, res) => {
+  try {
+    const db = getDb();
+    const list = db.prepare(`
+      SELECT p.id, p.identifier, psn.name 
+      FROM pokemon p
+      LEFT JOIN pokemon_species_names psn ON p.species_id = psn.pokemon_species_id AND psn.local_language_id = 3
+      WHERE p.is_default = 1
+      ORDER BY CAST(p.id AS INTEGER) ASC
+    `).all();
+    
+    const encountered = new Set(
+       game.store.query("poke:player_pokemon", "poke:hasEncountered", null).map(t => t[2])
+    );
+    
+    const result = list.map((p: any) => ({
+      ...p,
+      encountered: encountered.has(p.id.toString())
+    }));
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/graph', (req, res) => {
   res.json(game.store.toJSONLD());
 });
